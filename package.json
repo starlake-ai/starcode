@@ -1,36 +1,161 @@
 {
   "name": "starcode",
-	"displayName": "starcode",
+	"displayName": "Starcode",
 	"description": "Starlake Dev Env",
+	"publisher": "starlake",
 	"version": "0.0.1",
 	"engines": {
-		"vscode": "^1.67.0"
+		"vscode": "^1.60.0"
 	},
 	"categories": [
 		"Other"
 	],
 	"activationEvents": [
-        "onCommand:starcode.helloWorld"
+		"onStartupFinished"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
-		"commands": [
-			{
-				"command": "starcode.helloWorld",
-				"title": "Hello World"
+
+		"configuration": {
+			"title": "starcode",
+			"properties": {
+			  "starcode.sparkDir": {
+				"type": "string",
+				"default": "",
+				"description": "Spark folder"
+			  },
+			  "starcode.starlakeBin": {
+				"type": "string",
+				"default": "",
+				"description": "Starlake assembly path"
+			  },
+			  "starcode.googleCloudStorageTemporaryBucket": {
+				"type": "string",
+				"default": "",
+				"description": "Temporary bucket used by Spark BigQuery connector (optional)"
+			  },
+			  "starcode.logLevel": {
+				"type": "string",
+				"default": "ERROR",
+				"enum": [
+					"OFF",
+					"FATAL",
+					"ERROR",
+					"WARN",
+					"INFO",
+					"DEBUG",
+					"TRACE",
+					"ALL",
+					"Default"
+				  ],
+				"description": "Starlake Log level"
+			  }
 			}
-		]
+		},
+        "languages": [
+            {
+                "id": "starcode",
+                "aliases": [
+                    "starcode",
+                    "sql"
+                ],
+                "extensions": [
+                    ".sql"
+                ],
+                "configuration": "./syntax/language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "starcode",
+                "scopeName": "source.starcode",
+                "path": "./syntax/starcode.tmLanguage.json"
+            }
+        ],
+		"commands": [
+				{
+					"command": "starcode.setProjectCommand",
+					"title": "Set Google Cloud Project"
+				},
+				{
+					"command": "starcode.validate",
+					"title": "Starlake: Validate Project"
+				},
+				{
+					"command": "starcode.previewJobQuery",
+					"title": "Starlake: Preview Query"
+				},
+				{
+					"command": "starcode.runQuery",
+					"title": "Starlake: Run Query"
+				},
+				{
+					"command": "starcode.runjob",
+					"title": "Starlake: Run Job"
+				},
+				{
+					"command": "starcode.createdomain",
+					"title": "Starlake: New Domain"
+				},
+				{
+					"command": "starcode.createjob",
+					"title": "Starlake: New Job"
+				},
+				{
+					"command": "starcode.load",
+					"title": "Starlake: Load"
+				},
+				{
+					"command": "starcode.dryRun",
+					"title": "Starlake: Dry Run"
+				}				
+			],
+			"menus": {
+				"explorer/context": [
+					{
+						"when": "resourcePath =~ /TODOjobs/",
+						"command": "starcode.createjob",
+						"group": "Starlake@1"
+			  		},
+					{
+						"when": "resourcePath =~ /TODOdomains/",
+						"command": "starcode.createdomain",
+						"group": "Starlake@1"
+			  		},
+					  {
+						"when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
+						"command": "starcode.runjob",
+						"group": "Starlake@1"
+					},
+					{
+						"when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
+						"command": "starcode.runQuery",
+						"group": "Starlake@1"
+					},
+					{
+						"when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
+						"command": "starcode.previewJobQuery",
+						"group": "Starlake@1"
+					},
+					{
+						"when": "resourcePath =~ /metadata/",
+						"command": "starcode.validate",
+						"group": "Starlake@1"
+					}
+				]
+			}			
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
 		"compile": "tsc -p ./",
 		"watch": "tsc -watch -p ./",
+		"preLaunchTask": "${defaultBuildTask}",
 		"pretest": "npm run compile && npm run lint",
 		"lint": "eslint src --ext ts",
 		"test": "node ./out/test/runTest.js"
 	},
 	"devDependencies": {
-		"@types/vscode": "^1.67.0",
+		"@types/vscode": "^1.60.0",
 		"@types/glob": "^7.2.0",
 		"@types/mocha": "^9.1.1",
 		"@types/node": "14.x",
@@ -41,5 +166,13 @@
 		"mocha": "^9.2.2",
 		"typescript": "^4.6.4",
 		"@vscode/test-electron": "^2.1.3"
-	}
+	},
+	"dependencies": {
+		"@google-cloud/bigquery": "^5.12.0",
+        "@google-cloud/resource": "^1.2.1",
+		"csv-stringify": "^6.0.5",
+		"easy-table": "^1.2.0",
+		"safe-flat": "^2.0.2",
+		"sql-formatter": "^6.1.1"
+	  }
 }

@@ -1,25 +1,598 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as child_process from 'child_process';
+import { loadConfig, ISettings } from './settings';
+const { flatten } = require('safe-flat')
+import { format } from 'sql-formatter';
+
+import { BigQuery } from '@google-cloud/bigquery';
+import { stringify } from 'csv-stringify';
+import easyTable = require("easy-table");
+import { Resource } from '@google-cloud/resource';
+
+let log = vscode.window.createOutputChannel("starcode log");
+let selectedEnv = "None"
+let switchEnvItem: vscode.StatusBarItem
+let selectedFormat = "table"
+let selectedFormatItem: vscode.StatusBarItem
+let config: ISettings
+let projectItem: vscode.StatusBarItem;
+//let dryRunItem: vscode.StatusBarItem;
+let resourceClient: Resource = new Resource();
+let client = new BigQuery()
+let extensionContext: vscode.ExtensionContext;
+
+function createStatusBarItem(priority: number): vscode.StatusBarItem {
+    const alignment = vscode.StatusBarAlignment.Right;
+    return vscode.window.createStatusBarItem(alignment, priority);
+}
+
+function createSwitchEnvItem(context: vscode.ExtensionContext): vscode.StatusBarItem
+{
+	switchEnvItem = createStatusBarItem(1);
+    switchEnvItem.command = 'starcode.switchEnv';
+    context.subscriptions.push(vscode.commands.registerCommand('starcode.switchEnv', async () => 
+    {
+		let envs = listEnvs()
+        selectedEnv = await vscode.window.showQuickPick(
+            envs,
+            { placeHolder: 'Select Env' }) || 'None';
+		switchEnvItem.text = `Env(${selectedEnv})`
+		extensionContext.workspaceState.update('cometEnv', selectedEnv);
+    }));
+//    context.subscriptions.push(switchEnvItem);
+	
+	selectedEnv = extensionContext.workspaceState.get('cometEnv') || 'None'
+    switchEnvItem.text = `Starlake Env(${selectedEnv})`;
+    switchEnvItem.tooltip = `Starlake Env`;
+    switchEnvItem.show();
+	return switchEnvItem
+}
+function createSelectedFormatItem(context: vscode.ExtensionContext): vscode.StatusBarItem
+{
+	selectedFormatItem = createStatusBarItem(1);
+    selectedFormatItem.command = 'starcode.selectFormat';
+    context.subscriptions.push(vscode.commands.registerCommand('starcode.selectFormat', async () => 
+    {
+        selectedFormat = await vscode.window.showQuickPick(
+            ['csv', 'json', 'table'],
+            { placeHolder: 'Results Format' }) || 'table';
+			selectedFormatItem.text = `Format(${selectedFormat})`
+
+    }));
+    context.subscriptions.push(selectedFormatItem);
+    selectedFormatItem.text = `Format(table)`;
+    selectedFormatItem.tooltip = `Query Results Format`;
+    selectedFormatItem.show();
+	return selectedFormatItem
+}
+
+function createProjectItem(context: vscode.ExtensionContext): vscode.StatusBarItem {
+    const item = createStatusBarItem(10);
+    item.command = "starcode.setProjectCommand";
+	item.text = "No GCP project selected yet"
+	vscode.commands.registerCommand(
+		'starcode.setProjectCommand',
+		() => setProjectCommand()
+	)
+	item.tooltip = `GCP project`
+	item.show();
+    return item;
+}
+
+function dryRunSubscribe(context: vscode.ExtensionContext) {
+/*
+    const item = createStatusBarItem(1);
+    item.command = "starcode.dryRun";
+	item.tooltip = `Dry Run status`
+	item.text =" No dry run yet"
+	item.show();
+*/
+	context.subscriptions.push(
+		vscode.workspace.onDidOpenTextDocument(document => {
+			if (document.languageId === "starcode") {
+				runDry(document.uri);
+			}
+		}),
+		vscode.window.onDidChangeActiveTextEditor(e => {
+            if (e !== undefined && e.document.languageId === "starcode") {
+                runDry(e.document.uri);
+            }
+        }),
+		vscode.window.onDidChangeTextEditorSelection(e => {
+            if (e !== undefined && e.textEditor.document.languageId === "starcode") {
+                runDry(e.textEditor.document.uri);
+            }
+        }),
+        vscode.workspace.onDidCloseTextDocument(document => {
+            //dryRunItem.text = "No dry run yet"
+        }),
+
+	);	
+    //return item;
+}
+
+function previewJobSubscribe(context: vscode.ExtensionContext) {
+	context.subscriptions.push(
+		vscode.window.onDidChangeTextEditorSelection(e => {
+			if (e !== undefined && e.selections.length > 0) {
+				let text = e.textEditor.document.getText(e.textEditor.selection).trim();
+				if (text.startsWith("transform:")) {
+					logClear()
+					previewJobQuery(e.textEditor.document.uri)
+				}
+				else if (text.indexOf("${") >= 0 || text.indexOf("{{") >= 0) {
+					logClear()
+					previewJobQuery(e.textEditor.document.uri)
+				}
+			}
+		})	
+	);	
+	//return item;
+}
+	
+	
+function updateStatusBarItems(): void {
+    updateProjectIdItem();
+//    updateDryRunItem();
+}
+
+function updateProjectIdItem(): void {
+    projectItem.text = getCurrentProjectId() || 'Choose Project'
+}
+
+
+function buildEnv(logLevel?: string) {
+	let result = {
+		env: {
+			...process.env, 
+			COMET_ROOT: vscode.workspace.workspaceFolders![0].uri.fsPath,
+			COMET_ENV: selectedEnv,
+			SPARK_DIR: config.sparkDir,
+			COMET_BIN: config.starlakeBin,
+			COMET_LOGLEVEL: logLevel || config.logLevel || 'ERROR',
+			GCLOUD_PROJECT: getCurrentProjectId() || "",
+			TEMPORARY_GCS_BUCKET: config.googleCloudStorageTemporaryBucket || ""
+		}
+	}
+	return result
+}
+
+function runValidate(uri:vscode.Uri): void {
+	let validateOutput = ""
+	if(vscode.workspace.workspaceFolders !== undefined) {
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
+		let metadataPath = path.join(wf, "metadata")
+		if (fs.existsSync(metadataPath)) {
+			logClear()
+			let cmd = starlakeCmd()
+			if (cmd) {
+				let ls = child_process.spawn(cmd, ["validate"], buildEnv());
+				ls.stdout.on('data', function (data) {
+					validateOutput += data.toString()
+				});
+				ls.stderr.on('data', function (data) {
+					validateOutput += data.toString()
+				});
+				ls.on('exit', function (code) {
+					let startIndex = validateOutput.indexOf("START VALIDATION RESULTS: ")
+					let endIndex = validateOutput.indexOf("END VALIDATION RESULTS")
+					let errorFound = validateOutput.indexOf(" ERROR ") >=0
+					if (startIndex >= 0 && endIndex > startIndex) {
+						let validationData = validateOutput.substring(startIndex+"START VALIDATION RESULTS: ".length, endIndex)
+						log.append(validationData)
+					}
+					else {
+						log.append(validateOutput);
+					}
+					if (errorFound || code !== 0)
+						vscode.window.showErrorMessage('Validation failed. See errors in log');
+					else
+						vscode.window.showInformationMessage('Validation succeeded');
+				});
+				validateOutput = ""
+			}
+		}
+	}
+}
+
+
+function starlakeCmd(): string | undefined {
+	if (!config.starlakeBin) {
+		vscode.window.showErrorMessage("Set 'Starlake Bin' to the path of your starlake assembly")
+	}
+	else if (process.platform === 'win32') {
+		return path.join(path.dirname(config.starlakeBin), "starlake.cmd")
+	}
+	else {
+		return path.join(path.dirname(config.starlakeBin), "starlake.sh")
+	}
+}
+
+function runLoad(uri:vscode.Uri): void {
+	if(vscode.workspace.workspaceFolders !== undefined) {
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
+		let metadataPath = path.join(wf, "metadata")
+		if (fs.existsSync(metadataPath)) {
+			logClear()
+			let cmd = starlakeCmd()
+			if (cmd) {
+				let ls = child_process.spawn(cmd, ["load"], buildEnv());
+				ls.stdout.on('data', function (data) {
+					log.append(data.toString());
+				});
+				ls.stderr.on('data', function (data) {
+					log.append(data.toString());
+				});
+				ls.on('exit', function (code) {
+					if (code !== 0)
+						vscode.window.showErrorMessage('Load failed ' + code);
+					else
+						vscode.window.showInformationMessage('Load succeeded ' + code);
+				});
+			}
+		}
+	}
+}
+
+
+function runJob (uri:vscode.Uri): void {
+	if(vscode.workspace.workspaceFolders !== undefined) {
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
+		let metadataPath = path.join(wf, "metadata")
+		if (fs.existsSync(metadataPath)) {
+			//vscode.window.showInformationMessage(wf);
+			let currentlyOpenTabfilePath = uri ? uri.fsPath : vscode.window.activeTextEditor!.document.fileName;
+			let currentlyOpenTabfileName = path.basename(currentlyOpenTabfilePath);
+			let jobname = ""
+			if (currentlyOpenTabfileName.endsWith(".comet.yml")) {
+				jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".comet.yml".length)
+
+			} else if (currentlyOpenTabfileName.endsWith(".sql")) {
+				jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".sql".length)
+				let index = jobname.indexOf('.')
+				if (index > 0) {
+					jobname =jobname.substring(0, index)
+				}
+			}
+			else {
+				return
+			}
+			logClear()
+			let cmd = starlakeCmd()
+			if (cmd) {
+				let ls = child_process.spawn(cmd, ["transform", "--name", jobname], buildEnv());
+				ls.stdout.on('data', function (data) {
+					log.append(data.toString());
+				});
+				ls.stderr.on('data', function (data) {
+					log.append(data.toString());
+				});
+				ls.on('exit', function (code) {
+					if (code !== 0)
+						vscode.window.showErrorMessage('Transform failed');
+					else
+						vscode.window.showInformationMessage('Transform success');
+				});
+			}
+		}
+	}
+}
+
+function previewJobQuery (uri:vscode.Uri): void {
+	executeJobQuery(uri, true)
+}
+
+function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
+	let compileQueryData = ""
+	if(vscode.workspace.workspaceFolders !== undefined) {
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
+		let metadataPath = path.join(wf, "metadata")
+		if (fs.existsSync(metadataPath)) {
+			//vscode.window.showInformationMessage(wf);
+			let currentlyOpenTabfilePath = uri ? uri.fsPath : vscode.window.activeTextEditor!.document.fileName;
+			let currentlyOpenTabfileName = path.basename(currentlyOpenTabfilePath);
+			let jobname = ""
+			if (currentlyOpenTabfileName.endsWith(".comet.yml")) {
+				jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".comet.yml".length)
+
+			} else if (currentlyOpenTabfileName.endsWith(".sql")) {
+				jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".sql".length)
+				let index = jobname.indexOf('.')
+				if (index > 0) {
+					jobname =jobname.substring(0, index)
+				}
+			} else {
+				return
+			}
+			logClear()
+			log.append("Computing Job request ...")
+			let cmd = starlakeCmd()
+			if (cmd) {
+				let ls = child_process.spawn(cmd, ["transform", "--name", jobname, "--compile"], buildEnv("INFO"));
+				ls.stdout.on('data', function (data) {
+					compileQueryData += data.toString()
+				});
+				ls.stderr.on('data', function (data) {
+					compileQueryData += data.toString() 	
+				});
+				ls.on('exit', function (code) {				
+					let startIndex = compileQueryData.indexOf("START COMPILE SQL")
+					let endIndex = compileQueryData.indexOf("END COMPILE SQL")
+					if (startIndex >= 0 && endIndex > startIndex) {
+						let queryData = compileQueryData.substring(startIndex+'START COMPILE SQL'.length, endIndex)
+						logClear()
+						log.append("Computed Job request:\n")
+						log.append(format(queryData))
+						executeQuery(queryData, !!isDryRun)
+
+					}
+					else {
+						log.append(compileQueryData);
+					}
+					compileQueryData = ""
+					if (code !== 0)
+						vscode.window.showErrorMessage('Transform failed');
+				});
+			}
+		}
+	}
+}
+
+function getCurrentProjectId(): string | undefined {
+    const memento = extensionContext.workspaceState.get('bqProjectId');
+    if (typeof memento === 'undefined') {
+        const projectId = client.getProjectId();
+        extensionContext.workspaceState.update('bqProjectId', projectId);
+    }
+    return extensionContext.workspaceState.get('bqProjectId');
+}
+
+function setCurrentProjectId(projectId: string): void {
+    extensionContext.workspaceState.update('bqProjectId', projectId);
+    client.projectId = projectId;
+    updateProjectIdItem();
+    //dryRunAll();
+}
+
+
+function logClear() {
+	log.clear()
+	log.show()
+}
+
+function runQuery (uri:vscode.Uri): void {
+	if(vscode.workspace.workspaceFolders !== undefined) {
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
+		let metadataPath = path.join(wf, "metadata")
+		if (fs.existsSync(metadataPath)) {
+			logClear()
+			let myUri = uri || vscode.window.activeTextEditor!.document.uri
+			if (myUri.fsPath.endsWith(".comet.yml")) {
+				executeJobQuery(uri, false)
+			}
+			let selection = vscode.window.activeTextEditor!.selection;
+			let query = ""
+			if (selection.isEmpty) 
+				query = fs.readFileSync(myUri.fsPath, 'utf8');
+			else 
+				query = vscode.window.activeTextEditor!.document.getText(selection).trim();
+				if(myUri.fsPath.endsWith(".sql")) {
+					if (query.indexOf("${") >= 0 || query.indexOf("{{") >= 0)
+					executeJobQuery(myUri, false)
+					else
+						executeQuery(query, false)
+				}
+		}
+	}
+}
+
+function runDry (uri:vscode.Uri): void {
+	if(vscode.workspace.workspaceFolders !== undefined) {
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
+		let metadataPath = path.join(wf, "metadata")
+		if (fs.existsSync(metadataPath)) {
+			let selection = vscode.window.activeTextEditor!.selection;
+			let query = ""
+			let myUri = uri || vscode.window.activeTextEditor!.document.uri
+			if (selection.isEmpty) 
+				query = query = fs.readFileSync(myUri.fsPath, 'utf8');
+			else 
+				query = vscode.window.activeTextEditor!.document.getText(selection).trim();
+			executeQuery(query, true)
+		}
+	}
+}
+
+function executeQuery(queryText: string, isDryRun?: boolean) {
+	client = new BigQuery({
+	  projectId:  getCurrentProjectId()
+	});
+  
+	let id: string | undefined;
+	let job = client
+	  .createQueryJob({
+		query: queryText,
+		useLegacySql: false,
+		dryRun: isDryRun
+	  })
+	  .then(data => {
+		let job = data[0];
+		id = job.id;
+		const jobIdMessage = `BigQuery job ID: ${job.id}`;
+		let totalBytesProcessed = +job.metadata.statistics.totalBytesProcessed;
+		let totalBytesStr = ""
+		if (totalBytesProcessed < 1000)
+			totalBytesStr = `${totalBytesProcessed}B`
+		else if (totalBytesProcessed < 1000000)
+			totalBytesStr = `${totalBytesProcessed / 1000} KB`
+		else if (totalBytesProcessed < 1000000000)
+			totalBytesStr = `${totalBytesProcessed / 1000000} MB`
+		else
+			totalBytesStr = `${totalBytesProcessed / 1000000000} GB`
+		//dryRunItem.text = totalBytesStr
+		vscode.window.showInformationMessage(`Dry run: ${totalBytesStr}`);
+		if (!isDryRun)
+			return job.getQueryResults({
+			autoPaginate: true
+			});
+	  })
+	  .catch(err => {
+		if (!isDryRun)
+			vscode.window.showErrorMessage(`Failed to query BigQuery: ${err}`);
+		return null;
+	  });
+  
+	if (!isDryRun)
+		return job
+		.then(data => {
+			if (data) {
+			writeResults(id!, data[0]);
+			}
+		})
+		.catch(err => {
+			vscode.window.showErrorMessage(`Failed to get results: ${err}`);
+		});
+  }
+  
+
+function writeResults(jobId: string, rows: Array<any>): void {
+	logClear()
+	log.appendLine(`Results for job ${jobId}:`);
+
+	let format = selectedFormat;
+
+	switch (format) {
+		case "csv":
+			stringify(rows, (err, res) => {
+			log.appendLine(res);
+		});
+
+		break;
+		case "table":
+		let t = new easyTable();
+
+		// Collect the header names; flatten nested objects into a
+		// recordname.recordfield format
+		let headers:string[] = [];
+		Object.keys(flatten(rows[0])).forEach(name => headers.push(name));
+
+		rows.forEach((val, idx) => {
+			// Flatten each row, and for each header (name), insert the matching
+			// object property (v[name])
+			let v = flatten(val, { safe: true });
+			headers.forEach((name, col) => {
+			t.cell(name, v[name]);
+			});
+			t.newRow();
+		});
+
+		log.appendLine(t.toString());
+
+		break;
+		default:
+		rows.forEach(row => {
+			log.appendLine(
+			JSON.stringify(flatten(row, { safe: true }), null, "")
+			);
+		});
+	}
+}
+
+function isStarlakeWorkspace() {
+	if(vscode.workspace.workspaceFolders !== undefined) {
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
+		let metadataPath = path.join(wf, "metadata")
+		return fs.existsSync(metadataPath)
+	} 
+	else {
+		return false
+	}
+}
+
+function listEnvs() {
+	if(vscode.workspace.workspaceFolders !== undefined) {
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
+		let metadataPath = path.join(wf, "metadata")
+		let envFiles = fs.readdirSync(metadataPath).filter(fn => fn !== 'env.comet.yml' && fn.endsWith('.comet.yml') && fn.startsWith('env.'));
+		let result = envFiles.map(fn => fn.substring(4, fn.length - ".comet.yml".length))
+		result.push('None')
+		return result.sort()
+	}
+	else {
+		return ['None']
+	}
+}
+
+
+function setProjectCommand(): void {
+    let options: vscode.InputBoxOptions = {
+        ignoreFocusOut: false,
+    }
+
+    resourceClient.getProjects()
+        .then(p => p[0])
+        .then(ps => ps.map(p => p.id))
+        .then(ps => vscode.window.showQuickPick(<string[]>ps))
+        .then(p => {
+            if (typeof (p) !== 'undefined') {
+                setCurrentProjectId(p);
+            }
+        })
+        .catch(error => vscode.window.showErrorMessage(error.message));
+}
+
+type CommandMap = Map<string, (uri:vscode.Uri) => void>;
+let commands: CommandMap = new Map<string, (uri:vscode.Uri) => void>([
+  ["starcode.validate", runValidate],
+  ["starcode.load", runLoad],
+  ["starcode.previewJobQuery", previewJobQuery],
+  ["starcode.runjob", runJob],
+  ["starcode.runQuery", runQuery]
+]);
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "starcode" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('starcode.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from starcode!');
-	});
-
-	context.subscriptions.push(disposable);
+    extensionContext = context;
+	config = loadConfig("starcode");
+	if (isStarlakeWorkspace()) {
+		projectItem = createProjectItem(context);
+		dryRunSubscribe(context);
+		previewJobSubscribe(context)
+		switchEnvItem = createSwitchEnvItem(context)
+		selectedFormatItem = createSelectedFormatItem(context)
+		updateStatusBarItems();
+		commands.forEach((action, name) => {
+			context.subscriptions.push(vscode.commands.registerCommand(name, action));
+		});
+		context.subscriptions.push(
+			vscode.workspace.onDidChangeConfiguration(event => {
+			  if (!event.affectsConfiguration("starcode")) {
+				return;
+			  }
+			  config = loadConfig("starcode");
+			}),
+			vscode.commands.registerCommand(
+				'starcode.dryRun',
+				() => {
+					const editor = vscode.window.activeTextEditor;
+					if (editor !== undefined) {
+						const document = editor.document;
+						if (document.languageId === 'starcode') {
+							runDry(document.uri);
+						}
+					}
+				}
+			)			
+		  );		
+	} else {
+		vscode.window.showErrorMessage("Invalid Workspace folder. Please make sure you open a valid starlake project")
+	}
 }
 
 // this method is called when your extension is deactivated
