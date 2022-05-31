@@ -14,7 +14,7 @@ import { stringify } from 'csv-stringify';
 import easyTable = require("easy-table");
 import { Resource } from '@google-cloud/resource';
 
-let log = vscode.window.createOutputChannel("starcode log");
+let log = vscode.window.createOutputChannel("starlake log");
 let selectedEnv = "None"
 let switchEnvItem: vscode.StatusBarItem
 let selectedFormat = "table"
@@ -34,8 +34,8 @@ function createStatusBarItem(priority: number): vscode.StatusBarItem {
 function createSwitchEnvItem(context: vscode.ExtensionContext): vscode.StatusBarItem
 {
 	switchEnvItem = createStatusBarItem(1);
-    switchEnvItem.command = 'starcode.switchEnv';
-    context.subscriptions.push(vscode.commands.registerCommand('starcode.switchEnv', async () => 
+    switchEnvItem.command = 'starlake.switchEnv';
+    context.subscriptions.push(vscode.commands.registerCommand('starlake.switchEnv', async () => 
     {
 		let envs = listEnvs()
         selectedEnv = await vscode.window.showQuickPick(
@@ -44,7 +44,6 @@ function createSwitchEnvItem(context: vscode.ExtensionContext): vscode.StatusBar
 		switchEnvItem.text = `Env(${selectedEnv})`
 		extensionContext.workspaceState.update('cometEnv', selectedEnv);
     }));
-//    context.subscriptions.push(switchEnvItem);
 	
 	selectedEnv = extensionContext.workspaceState.get('cometEnv') || 'None'
     switchEnvItem.text = `Starlake Env(${selectedEnv})`;
@@ -55,8 +54,8 @@ function createSwitchEnvItem(context: vscode.ExtensionContext): vscode.StatusBar
 function createSelectedFormatItem(context: vscode.ExtensionContext): vscode.StatusBarItem
 {
 	selectedFormatItem = createStatusBarItem(1);
-    selectedFormatItem.command = 'starcode.selectFormat';
-    context.subscriptions.push(vscode.commands.registerCommand('starcode.selectFormat', async () => 
+    selectedFormatItem.command = 'starlake.selectFormat';
+    context.subscriptions.push(vscode.commands.registerCommand('starlake.selectFormat', async () => 
     {
         selectedFormat = await vscode.window.showQuickPick(
             ['csv', 'json', 'table'],
@@ -72,11 +71,11 @@ function createSelectedFormatItem(context: vscode.ExtensionContext): vscode.Stat
 }
 
 function createProjectItem(context: vscode.ExtensionContext): vscode.StatusBarItem {
-    const item = createStatusBarItem(10);
-    item.command = "starcode.setProjectCommand";
+    const item = createStatusBarItem(1);
+    item.command = "starlake.setProjectCommand";
 	item.text = "No GCP project selected yet"
 	vscode.commands.registerCommand(
-		'starcode.setProjectCommand',
+		'starlake.setProjectCommand',
 		() => setProjectCommand()
 	)
 	item.tooltip = `GCP project`
@@ -85,26 +84,19 @@ function createProjectItem(context: vscode.ExtensionContext): vscode.StatusBarIt
 }
 
 function dryRunSubscribe(context: vscode.ExtensionContext) {
-/*
-    const item = createStatusBarItem(1);
-    item.command = "starcode.dryRun";
-	item.tooltip = `Dry Run status`
-	item.text =" No dry run yet"
-	item.show();
-*/
 	context.subscriptions.push(
 		vscode.workspace.onDidOpenTextDocument(document => {
-			if (document.languageId === "starcode") {
+			if (document.languageId === "starlake") {
 				runDry(document.uri);
 			}
 		}),
 		vscode.window.onDidChangeActiveTextEditor(e => {
-            if (e !== undefined && e.document.languageId === "starcode") {
+            if (e !== undefined && e.document.languageId === "starlake") {
                 runDry(e.document.uri);
             }
         }),
 		vscode.window.onDidChangeTextEditorSelection(e => {
-            if (e !== undefined && e.textEditor.document.languageId === "starcode") {
+            if (e !== undefined && e.textEditor.document.languageId === "starlake") {
                 runDry(e.textEditor.document.uri);
             }
         }),
@@ -113,7 +105,6 @@ function dryRunSubscribe(context: vscode.ExtensionContext) {
         }),
 
 	);	
-    //return item;
 }
 
 function previewJobSubscribe(context: vscode.ExtensionContext) {
@@ -132,13 +123,11 @@ function previewJobSubscribe(context: vscode.ExtensionContext) {
 			}
 		})	
 	);	
-	//return item;
 }
 	
 	
 function updateStatusBarItems(): void {
     updateProjectIdItem();
-//    updateDryRunItem();
 }
 
 function updateProjectIdItem(): void {
@@ -153,8 +142,9 @@ function buildEnv(logLevel?: string) {
 			COMET_ROOT: vscode.workspace.workspaceFolders![0].uri.fsPath,
 			COMET_ENV: selectedEnv,
 			SPARK_DIR: config.sparkDir,
+			SPARK_HOME: config.sparkDir,
 			COMET_BIN: config.starlakeBin,
-			COMET_LOGLEVEL: logLevel || config.logLevel || 'ERROR',
+			COMET_LOGLEVEL: logLevel || config.logLevel || 'INFO',
 			GCLOUD_PROJECT: getCurrentProjectId() || "",
 			TEMPORARY_GCS_BUCKET: config.googleCloudStorageTemporaryBucket || ""
 		}
@@ -173,9 +163,11 @@ function runValidate(uri:vscode.Uri): void {
 			if (cmd) {
 				let ls = child_process.spawn(cmd, ["validate"], buildEnv());
 				ls.stdout.on('data', function (data) {
+					log.append(data.toString())
 					validateOutput += data.toString()
 				});
 				ls.stderr.on('data', function (data) {
+					log.append(data.toString())
 					validateOutput += data.toString()
 				});
 				ls.on('exit', function (code) {
@@ -205,7 +197,7 @@ function starlakeCmd(): string | undefined {
 	if (!config.starlakeBin) {
 		vscode.window.showErrorMessage("Set 'Starlake Bin' to the path of your starlake assembly")
 	}
-	else if (process.platform === 'win32') {
+	else if (process.platform == 'win32') {
 		return path.join(path.dirname(config.starlakeBin), "starlake.cmd")
 	}
 	else {
@@ -344,10 +336,17 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 }
 
 function getCurrentProjectId(): string | undefined {
-    const memento = extensionContext.workspaceState.get('bqProjectId');
+	const memento = extensionContext.workspaceState.get('bqProjectId');
     if (typeof memento === 'undefined') {
-        const projectId = client.getProjectId();
-        extensionContext.workspaceState.update('bqProjectId', projectId);
+        client.getProjectId().then( 
+			data => { // resolve() 
+				setCurrentProjectId(data)				
+			}, 
+			error => { // reject() 
+				console.log(error); 
+			}
+		);
+        
     }
     return extensionContext.workspaceState.get('bqProjectId');
 }
@@ -365,14 +364,14 @@ function logClear() {
 	log.show()
 }
 
-function runQuery (uri:vscode.Uri): void {
+function runQuery(uri:vscode.Uri): void {
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
 		let metadataPath = path.join(wf, "metadata")
 		if (fs.existsSync(metadataPath)) {
 			logClear()
 			let myUri = uri || vscode.window.activeTextEditor!.document.uri
-			if (myUri.fsPath.endsWith(".comet.yml")) {
+			if (myUri.fsPath.endsWith(".comet.yml") && myUri.fsPath.indexOf("jobs") > 0) {
 				executeJobQuery(uri, false)
 			}
 			let selection = vscode.window.activeTextEditor!.selection;
@@ -381,7 +380,7 @@ function runQuery (uri:vscode.Uri): void {
 				query = fs.readFileSync(myUri.fsPath, 'utf8');
 			else 
 				query = vscode.window.activeTextEditor!.document.getText(selection).trim();
-				if(myUri.fsPath.endsWith(".sql")) {
+				if(myUri.fsPath.endsWith(".sql") && myUri.fsPath.indexOf("jobs") > 0) {
 					if (query.indexOf("${") >= 0 || query.indexOf("{{") >= 0)
 					executeJobQuery(myUri, false)
 					else
@@ -442,6 +441,7 @@ function executeQuery(queryText: string, isDryRun?: boolean) {
 			});
 	  })
 	  .catch(err => {
+		extensionContext.workspaceState.update('bqProjectId', undefined);
 		if (!isDryRun)
 			vscode.window.showErrorMessage(`Failed to query BigQuery: ${err}`);
 		return null;
@@ -548,42 +548,42 @@ function setProjectCommand(): void {
 
 type CommandMap = Map<string, (uri:vscode.Uri) => void>;
 let commands: CommandMap = new Map<string, (uri:vscode.Uri) => void>([
-  ["starcode.validate", runValidate],
-  ["starcode.load", runLoad],
-  ["starcode.previewJobQuery", previewJobQuery],
-  ["starcode.runjob", runJob],
-  ["starcode.runQuery", runQuery]
+  ["starlake.validate", runValidate],
+  ["starlake.load", runLoad],
+  ["starlake.previewJobQuery", previewJobQuery],
+  ["starlake.runjob", runJob],
+  ["starlake.runQuery", runQuery]
 ]);
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
     extensionContext = context;
-	config = loadConfig("starcode");
+	config = loadConfig("starlake");
 	if (isStarlakeWorkspace()) {
-		projectItem = createProjectItem(context);
 		dryRunSubscribe(context);
 		previewJobSubscribe(context)
 		switchEnvItem = createSwitchEnvItem(context)
 		selectedFormatItem = createSelectedFormatItem(context)
+		projectItem = createProjectItem(context);
 		updateStatusBarItems();
 		commands.forEach((action, name) => {
 			context.subscriptions.push(vscode.commands.registerCommand(name, action));
 		});
 		context.subscriptions.push(
 			vscode.workspace.onDidChangeConfiguration(event => {
-			  if (!event.affectsConfiguration("starcode")) {
+			  if (!event.affectsConfiguration("starlake")) {
 				return;
 			  }
-			  config = loadConfig("starcode");
+			  config = loadConfig("starlake");
 			}),
 			vscode.commands.registerCommand(
-				'starcode.dryRun',
+				'starlake.dryRun',
 				() => {
 					const editor = vscode.window.activeTextEditor;
 					if (editor !== undefined) {
 						const document = editor.document;
-						if (document.languageId === 'starcode') {
+						if (document.languageId === 'starlake') {
 							runDry(document.uri);
 						}
 					}

@@ -20,10 +20,10 @@ Profit.
 
 This extension contributes the following settings:
 
-* `starcode.sparkDir`: Where are your Spark binaries installed
-* `starcode.cometBin`: Reference to your starlake assembly
-* `starcode.googleCloudStorageTemporaryBucket`: Temporary bucket to use when syncing to BigQuery
-* `starcode.logLevel`: One of the level supported by for Log4J
+* `starlake.sparkDir`: Where are your Spark binaries installed
+* `starlake.cometBin`: Reference to your starlake assembly
+* `starlake.googleCloudStorageTemporaryBucket`: Temporary bucket to use when syncing to BigQuery
+* `starlake.logLevel`: One of the level supported by for Log4J
 
 ## Release Notes
 

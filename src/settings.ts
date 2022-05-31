@@ -19,7 +19,7 @@ export function loadConfig(myPluginId: string): ISettings {
         sparkDir: getOrElse(configuration, "sparkDir", "/Users/hayssams/git/public/starcode/scripts/bin/spark-3.2.1-bin-hadoop3.2"),
         starlakeBin: getOrElse(configuration, "starlakeBin", "/Users/hayssams/git/public/starcode/scripts/bin/starlake-spark3_2.12-0.3.17-SNAPSHOT-assembly.jar"),
         googleCloudStorageTemporaryBucket: getOrElse(configuration, "googleCloudStorageTemporaryBucket", "starlake-app"),
-        logLevel: getOrElse(configuration, "logLevel", "ERROR")
+        logLevel: getOrElse(configuration, "logLevel", "INFO")
     }
 }
 

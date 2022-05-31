@@ -1,6 +1,6 @@
 {
-  "name": "starcode",
-	"displayName": "Starcode",
+  "name": "starlake",
+	"displayName": "Starlake",
 	"description": "Starlake Dev Env",
 	"publisher": "starlake",
 	"version": "0.0.1",
@@ -17,24 +17,24 @@
 	"contributes": {
 
 		"configuration": {
-			"title": "starcode",
+			"title": "Starlake",
 			"properties": {
-			  "starcode.sparkDir": {
+			  "starlake.sparkDir": {
 				"type": "string",
 				"default": "",
 				"description": "Spark folder"
 			  },
-			  "starcode.starlakeBin": {
+			  "starlake.starlakeBin": {
 				"type": "string",
 				"default": "",
 				"description": "Starlake assembly path"
 			  },
-			  "starcode.googleCloudStorageTemporaryBucket": {
+			  "starlake.googleCloudStorageTemporaryBucket": {
 				"type": "string",
 				"default": "",
 				"description": "Temporary bucket used by Spark BigQuery connector (optional)"
 			  },
-			  "starcode.logLevel": {
+			  "starlake.logLevel": {
 				"type": "string",
 				"default": "ERROR",
 				"enum": [
@@ -54,9 +54,9 @@
 		},
         "languages": [
             {
-                "id": "starcode",
+                "id": "starlake",
                 "aliases": [
-                    "starcode",
+                    "starlake",
                     "sql"
                 ],
                 "extensions": [
@@ -67,46 +67,46 @@
         ],
         "grammars": [
             {
-                "language": "starcode",
-                "scopeName": "source.starcode",
-                "path": "./syntax/starcode.tmLanguage.json"
+                "language": "starlake",
+                "scopeName": "source.starlake",
+                "path": "./syntax/starlake.tmLanguage.json"
             }
         ],
 		"commands": [
 				{
-					"command": "starcode.setProjectCommand",
-					"title": "Set Google Cloud Project"
+					"command": "starlake.setProjectCommand",
+					"title": "Starlake: Set Default GCP Project"
 				},
 				{
-					"command": "starcode.validate",
+					"command": "starlake.validate",
 					"title": "Starlake: Validate Project"
 				},
 				{
-					"command": "starcode.previewJobQuery",
+					"command": "starlake.previewJobQuery",
 					"title": "Starlake: Preview Query"
 				},
 				{
-					"command": "starcode.runQuery",
+					"command": "starlake.runQuery",
 					"title": "Starlake: Run Query"
 				},
 				{
-					"command": "starcode.runjob",
+					"command": "starlake.runjob",
 					"title": "Starlake: Run Job"
 				},
 				{
-					"command": "starcode.createdomain",
+					"command": "starlake.createdomain",
 					"title": "Starlake: New Domain"
 				},
 				{
-					"command": "starcode.createjob",
+					"command": "starlake.createjob",
 					"title": "Starlake: New Job"
 				},
 				{
-					"command": "starcode.load",
+					"command": "starlake.load",
 					"title": "Starlake: Load"
 				},
 				{
-					"command": "starcode.dryRun",
+					"command": "starlake.dryRun",
 					"title": "Starlake: Dry Run"
 				}				
 			],
@@ -114,32 +114,32 @@
 				"explorer/context": [
 					{
 						"when": "resourcePath =~ /TODOjobs/",
-						"command": "starcode.createjob",
+						"command": "starlake.createjob",
 						"group": "Starlake@1"
 			  		},
 					{
 						"when": "resourcePath =~ /TODOdomains/",
-						"command": "starcode.createdomain",
+						"command": "starlake.createdomain",
 						"group": "Starlake@1"
 			  		},
 					  {
 						"when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
-						"command": "starcode.runjob",
+						"command": "starlake.runjob",
 						"group": "Starlake@1"
 					},
 					{
 						"when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
-						"command": "starcode.runQuery",
+						"command": "starlake.runQuery",
 						"group": "Starlake@1"
 					},
 					{
 						"when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
-						"command": "starcode.previewJobQuery",
+						"command": "starlake.previewJobQuery",
 						"group": "Starlake@1"
 					},
 					{
 						"when": "resourcePath =~ /metadata/",
-						"command": "starcode.validate",
+						"command": "starlake.validate",
 						"group": "Starlake@1"
 					}
 				]
