@@ -1,178 +1,180 @@
 {
   "name": "starlake",
-	"displayName": "Starlake",
-	"description": "Starlake Dev Env",
-	"publisher": "starlake",
-	"version": "0.0.1",
-	"engines": {
-		"vscode": "^1.60.0"
-	},
-	"categories": [
-		"Other"
-	],
-	"activationEvents": [
-		"onStartupFinished"
-	],
-	"main": "./out/extension.js",
-	"contributes": {
-
-		"configuration": {
-			"title": "Starlake",
-			"properties": {
-			  "starlake.sparkDir": {
-				"type": "string",
-				"default": "",
-				"description": "Spark folder"
-			  },
-			  "starlake.starlakeBin": {
-				"type": "string",
-				"default": "",
-				"description": "Starlake assembly path"
-			  },
-			  "starlake.googleCloudStorageTemporaryBucket": {
-				"type": "string",
-				"default": "",
-				"description": "Temporary bucket used by Spark BigQuery connector (optional)"
-			  },
-			  "starlake.logLevel": {
-				"type": "string",
-				"default": "ERROR",
-				"enum": [
-					"OFF",
-					"FATAL",
-					"ERROR",
-					"WARN",
-					"INFO",
-					"DEBUG",
-					"TRACE",
-					"ALL",
-					"Default"
-				  ],
-				"description": "Starlake Log level"
-			  }
-			}
-		},
-        "languages": [
-            {
-                "id": "starlake",
-                "aliases": [
-                    "starlake",
-                    "sql"
-                ],
-                "extensions": [
-                    ".sql"
-                ],
-                "configuration": "./syntax/language-configuration.json"
-            }
+  "displayName": "Starlake",
+  "description": "Starlake Dev Env",
+  "publisher": "starlake",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Starlake",
+      "properties": {
+        "starlake.sparkDir": {
+          "type": "string",
+          "default": "",
+          "description": "Spark folder"
+        },
+        "starlake.starlakeBin": {
+          "type": "string",
+          "default": "",
+          "description": "Starlake assembly path"
+        },
+        "starlake.googleCloudStorageTemporaryBucket": {
+          "type": "string",
+          "default": "",
+          "description": "Temporary bucket used by Spark BigQuery connector (optional)"
+        },
+        "starlake.logLevel": {
+          "type": "string",
+          "default": "ERROR",
+          "enum": [
+            "OFF",
+            "FATAL",
+            "ERROR",
+            "WARN",
+            "INFO",
+            "DEBUG",
+            "TRACE",
+            "ALL",
+            "Default"
+          ],
+          "description": "Starlake Log level"
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "starlake",
+        "aliases": [
+          "starlake",
+          "sql"
         ],
-        "grammars": [
-            {
-                "language": "starlake",
-                "scopeName": "source.starlake",
-                "path": "./syntax/starlake.tmLanguage.json"
-            }
+        "extensions": [
+          ".sql"
         ],
-		"commands": [
-				{
-					"command": "starlake.setProjectCommand",
-					"title": "Starlake: Set Default GCP Project"
-				},
-				{
-					"command": "starlake.validate",
-					"title": "Starlake: Validate Project"
-				},
-				{
-					"command": "starlake.previewJobQuery",
-					"title": "Starlake: Preview Query"
-				},
-				{
-					"command": "starlake.runQuery",
-					"title": "Starlake: Run Query"
-				},
-				{
-					"command": "starlake.runjob",
-					"title": "Starlake: Run Job"
-				},
-				{
-					"command": "starlake.createdomain",
-					"title": "Starlake: New Domain"
-				},
-				{
-					"command": "starlake.createjob",
-					"title": "Starlake: New Job"
-				},
-				{
-					"command": "starlake.load",
-					"title": "Starlake: Load"
-				},
-				{
-					"command": "starlake.dryRun",
-					"title": "Starlake: Dry Run"
-				}				
-			],
-			"menus": {
-				"explorer/context": [
-					{
-						"when": "resourcePath =~ /TODOjobs/",
-						"command": "starlake.createjob",
-						"group": "Starlake@1"
-			  		},
-					{
-						"when": "resourcePath =~ /TODOdomains/",
-						"command": "starlake.createdomain",
-						"group": "Starlake@1"
-			  		},
-					  {
-						"when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
-						"command": "starlake.runjob",
-						"group": "Starlake@1"
-					},
-					{
-						"when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
-						"command": "starlake.runQuery",
-						"group": "Starlake@1"
-					},
-					{
-						"when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
-						"command": "starlake.previewJobQuery",
-						"group": "Starlake@1"
-					},
-					{
-						"when": "resourcePath =~ /metadata/",
-						"command": "starlake.validate",
-						"group": "Starlake@1"
-					}
-				]
-			}			
-	},
-	"scripts": {
-		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -p ./",
-		"watch": "tsc -watch -p ./",
-		"preLaunchTask": "${defaultBuildTask}",
-		"pretest": "npm run compile && npm run lint",
-		"lint": "eslint src --ext ts",
-		"test": "node ./out/test/runTest.js"
-	},
-	"devDependencies": {
-		"@types/vscode": "^1.60.0",
-		"@types/glob": "^7.2.0",
-		"@types/mocha": "^9.1.1",
-		"@types/node": "14.x",
-		"@typescript-eslint/eslint-plugin": "^5.21.0",
-		"@typescript-eslint/parser": "^5.21.0",
-		"eslint": "^8.14.0",
-		"glob": "^8.0.1",
-		"mocha": "^9.2.2",
-		"typescript": "^4.6.4",
-		"@vscode/test-electron": "^2.1.3"
-	},
-	"dependencies": {
-		"@google-cloud/bigquery": "^5.12.0",
-        "@google-cloud/resource": "^1.2.1",
-		"csv-stringify": "^6.0.5",
-		"easy-table": "^1.2.0",
-		"safe-flat": "^2.0.2",
-		"sql-formatter": "^6.1.1"
-	  }
+        "configuration": "./syntax/language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "starlake",
+        "scopeName": "source.starlake",
+        "path": "./syntax/starlake.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "starlake.setProjectCommand",
+        "title": "Starlake: Set Default GCP Project"
+      },
+      {
+        "command": "starlake.validate",
+        "title": "Starlake: Validate Project"
+      },
+      {
+        "command": "starlake.previewJobQuery",
+        "title": "Starlake: Preview Query"
+      },
+      {
+        "command": "starlake.runQuery",
+        "title": "Starlake: Run Query"
+      },
+      {
+        "command": "starlake.runjob",
+        "title": "Starlake: Run Job"
+      },
+      {
+        "command": "starlake.createdomain",
+        "title": "Starlake: New Domain"
+      },
+      {
+        "command": "starlake.createjob",
+        "title": "Starlake: New Job"
+      },
+      {
+        "command": "starlake.load",
+        "title": "Starlake: Load"
+      },
+      {
+        "command": "starlake.dryRun",
+        "title": "Starlake: Dry Run"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "when": "resourcePath =~ /TODOjobs/",
+          "command": "starlake.createjob",
+          "group": "Starlake@1"
+        },
+        {
+          "when": "resourcePath =~ /TODOdomains/",
+          "command": "starlake.createdomain",
+          "group": "Starlake@1"
+        },
+        {
+          "when": "resourcePath =~ /metadata/",
+          "command": "starlake.validate",
+          "group": "Starlake@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
+          "command": "starlake.runjob",
+          "group": "Starlake@1"
+        },
+        {
+          "when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
+          "command": "starlake.runQuery",
+          "group": "Starlake@1"
+        },
+        {
+          "when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
+          "command": "starlake.previewJobQuery",
+          "group": "Starlake@1"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "preLaunchTask": "${defaultBuildTask}",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/glob": "^7.2.0",
+    "@types/mocha": "^9.1.1",
+    "@types/node": "14.x",
+    "@types/vscode": "^1.60.0",
+    "@typescript-eslint/eslint-plugin": "^5.21.0",
+    "@typescript-eslint/parser": "^5.21.0",
+    "@vscode/test-electron": "^2.1.3",
+    "eslint": "^8.14.0",
+    "glob": "^8.0.1",
+    "mocha": "^9.2.2",
+    "typescript": "^4.6.4"
+  },
+  "dependencies": {
+    "@google-cloud/bigquery": "^5.12.0",
+    "@google-cloud/resource": "^1.2.1",
+    "csv-stringify": "^6.0.5",
+    "easy-table": "^1.2.0",
+    "yaml": "^2.1.1",
+    "safe-flat": "^2.0.2",
+    "sql-formatter": "^6.1.1"
+  }
 }

@@ -13,15 +13,15 @@ import { BigQuery } from '@google-cloud/bigquery';
 import { stringify } from 'csv-stringify';
 import easyTable = require("easy-table");
 import { Resource } from '@google-cloud/resource';
+import {parse as parseYaml} from 'yaml';
 
 let log = vscode.window.createOutputChannel("starlake log");
-let selectedEnv = "None"
+let currentEnv = "None"
 let switchEnvItem: vscode.StatusBarItem
 let selectedFormat = "table"
 let selectedFormatItem: vscode.StatusBarItem
 let config: ISettings
 let projectItem: vscode.StatusBarItem;
-//let dryRunItem: vscode.StatusBarItem;
 let resourceClient: Resource = new Resource();
 let client = new BigQuery()
 let extensionContext: vscode.ExtensionContext;
@@ -38,15 +38,15 @@ function createSwitchEnvItem(context: vscode.ExtensionContext): vscode.StatusBar
     context.subscriptions.push(vscode.commands.registerCommand('starlake.switchEnv', async () => 
     {
 		let envs = listEnvs()
-        selectedEnv = await vscode.window.showQuickPick(
+        currentEnv = await vscode.window.showQuickPick(
             envs,
             { placeHolder: 'Select Env' }) || 'None';
-		switchEnvItem.text = `Env(${selectedEnv})`
-		extensionContext.workspaceState.update('cometEnv', selectedEnv);
+		switchEnvItem.text = `Env(${currentEnv})`
+		extensionContext.workspaceState.update('cometEnv', currentEnv);
     }));
 	
-	selectedEnv = extensionContext.workspaceState.get('cometEnv') || 'None'
-    switchEnvItem.text = `Starlake Env(${selectedEnv})`;
+	currentEnv = extensionContext.workspaceState.get('cometEnv') || 'None'
+    switchEnvItem.text = `Starlake Env(${currentEnv})`;
     switchEnvItem.tooltip = `Starlake Env`;
     switchEnvItem.show();
 	return switchEnvItem
@@ -106,24 +106,6 @@ function dryRunSubscribe(context: vscode.ExtensionContext) {
 
 	);	
 }
-
-function previewJobSubscribe(context: vscode.ExtensionContext) {
-	context.subscriptions.push(
-		vscode.window.onDidChangeTextEditorSelection(e => {
-			if (e !== undefined && e.selections.length > 0) {
-				let text = e.textEditor.document.getText(e.textEditor.selection).trim();
-				if (text.startsWith("transform:")) {
-					logClear()
-					previewJobQuery(e.textEditor.document.uri)
-				}
-				else if (text.indexOf("${") >= 0 || text.indexOf("{{") >= 0) {
-					logClear()
-					previewJobQuery(e.textEditor.document.uri)
-				}
-			}
-		})	
-	);	
-}
 	
 	
 function updateStatusBarItems(): void {
@@ -140,7 +122,7 @@ function buildEnv(logLevel?: string) {
 		env: {
 			...process.env, 
 			COMET_ROOT: vscode.workspace.workspaceFolders![0].uri.fsPath,
-			COMET_ENV: selectedEnv,
+			COMET_ENV: currentEnv,
 			SPARK_DIR: config.sparkDir,
 			SPARK_HOME: config.sparkDir,
 			COMET_BIN: config.starlakeBin,
@@ -276,7 +258,7 @@ function runJob (uri:vscode.Uri): void {
 }
 
 function previewJobQuery (uri:vscode.Uri): void {
-	executeJobQuery(uri, true)
+		executeJobQuery(uri, true)
 }
 
 function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
@@ -289,16 +271,21 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 			let currentlyOpenTabfilePath = uri ? uri.fsPath : vscode.window.activeTextEditor!.document.fileName;
 			let currentlyOpenTabfileName = path.basename(currentlyOpenTabfilePath);
 			let jobname = ""
-			if (currentlyOpenTabfileName.endsWith(".comet.yml")) {
-				jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".comet.yml".length)
+			if (currentlyOpenTabfilePath.indexOf("jobs") >=0) {
+				if (currentlyOpenTabfileName.endsWith(".comet.yml")) {
+					jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".comet.yml".length)
 
-			} else if (currentlyOpenTabfileName.endsWith(".sql")) {
-				jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".sql".length)
-				let index = jobname.indexOf('.')
-				if (index > 0) {
-					jobname =jobname.substring(0, index)
+				} else if (currentlyOpenTabfileName.endsWith(".sql")) {
+					jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".sql".length)
+					let index = jobname.indexOf('.')
+					if (index > 0) {
+						jobname =jobname.substring(0, index)
+					}
+				} else {
+					return
 				}
-			} else {
+			}
+			else {
 				return
 			}
 			logClear()
@@ -366,7 +353,7 @@ function logClear() {
 
 function runQuery(uri:vscode.Uri): void {
 	if(vscode.workspace.workspaceFolders !== undefined) {
-		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath;
 		let metadataPath = path.join(wf, "metadata")
 		if (fs.existsSync(metadataPath)) {
 			logClear()
@@ -562,7 +549,6 @@ export function activate(context: vscode.ExtensionContext) {
 	config = loadConfig("starlake");
 	if (isStarlakeWorkspace()) {
 		dryRunSubscribe(context);
-		previewJobSubscribe(context)
 		switchEnvItem = createSwitchEnvItem(context)
 		selectedFormatItem = createSelectedFormatItem(context)
 		projectItem = createProjectItem(context);
@@ -597,3 +583,69 @@ export function activate(context: vscode.ExtensionContext) {
 
 // this method is called when your extension is deactivated
 export function deactivate() {}
+
+
+
+
+
+
+/////////////////////////////////////////
+/////////////////////////////////////////
+/////////////////////////////////////////
+/////////////////////////////////////////
+
+function loadEnv(): Map<string, string> {
+    const rootFolder = vscode.workspace.workspaceFolders![0].uri.fsPath
+	let metadataPath = path.join(rootFolder, "metadata")
+	let envPath = path.join(metadataPath, "env.comet.yml")
+	let result = new Map<string, string>()
+	if (fs.existsSync(envPath)) {
+		const content = fs.readFileSync(envPath, 'utf8')
+		let envObject = parseYaml(content)
+		Object.entries(envObject.env).forEach(
+			([key, value]) => result.set(key, value as string)
+		);
+	}
+	
+	if (currentEnv != 'None') {
+		let currentEnvPath = path.join(metadataPath, `env.${currentEnv}.comet.yml`)
+		if (fs.existsSync(currentEnvPath)) {
+			const content = fs.readFileSync(currentEnvPath, 'utf8')
+			let currentEnvObject = parseYaml(content)
+			Object.entries(currentEnvObject.env).forEach(
+				([key, value]) => result.set(key, value as string)
+			);
+		}
+	}
+
+	return result
+}
+
+
+
+function getEngine(jobPath: string): any {
+	if (fs.existsSync(jobPath)) {
+		const content = fs.readFileSync(jobPath, 'utf8')
+		let jobObject = parseYaml(content)
+		if (jobObject.transform) {
+			let engine = jobObject.transform.engine as string
+			if (engine.indexOf("}") > 0) {
+				let engineVar = engine.replace("${", "").replace("{{", "").replace("}", "")
+				let engineValue = loadEnv().get(engineVar)
+				if (engineValue == 'undefined') 
+					return 'None'
+				else
+					return engineValue
+
+			}
+		}
+		else {
+			vscode.window.showErrorMessage(`transform tag not found in job file ${jobPath}`);
+		}
+	}
+	else {
+		vscode.window.showErrorMessage(`Job file ${jobPath} not found`);
+		return "None"
+	}
+}
+
