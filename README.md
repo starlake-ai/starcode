@@ -9,20 +9,19 @@
 
 ## Installation
 
-Installation via the Visual Studio Code Marketplace is not yet available. Sorry for that. However, the manual installation is not that complicated:
+- Download Spark from https://spark.apache.org
+- Download Starlake assembly from https://s01.oss.sonatype.org/content/repositories/releases/ai/starlake/
+- Download starlake.cmd on Windows or starlake.sh on MacOs / Linux from https://github.com/starlake-ai/starlake/tree/master/cli and copy it in the directory where you downloaded the Starlake assembly
 
-Download the latest VSIX file from GitHub.
-Press CTRL-Shift-P and select Extensions: Install from VSIX... (type ext vsix).
-Select the downloaded VSIX file.
 Profit.
 
 ## Extension Settings
 
 This extension contributes the following settings:
 
-* `starlake.sparkDir`: Where are your Spark binaries installed
-* `starlake.cometBin`: Reference to your starlake assembly
-* `starlake.googleCloudStorageTemporaryBucket`: Temporary bucket to use when syncing to BigQuery
+* `starlake.sparkDir`: Reference the folder Where your Spark binaries are installed
+* `starlake.cometBin`: Reference directly your starlake assembly
+* `starlake.googleCloudStorageTemporaryBucket`: Temporary bucket to use when syncing to BigQuery (without the gs:// prefix)
 * `starlake.logLevel`: One of the level supported by for Log4J
 
 ## Release Notes

@@ -15,6 +15,18 @@ import easyTable = require("easy-table");
 import { Resource } from '@google-cloud/resource';
 import {parse as parseYaml} from 'yaml';
 
+type CommandMap = Map<string, (uri:vscode.Uri) => void>;
+let commands: CommandMap = new Map<string, (uri:vscode.Uri) => void>([
+  ["starlake.validate", runValidate],
+  ["starlake.load", runLoad],
+  ["starlake.previewJobQuery", previewJobQuery],
+  ["starlake.runjob", runJob],
+  ["starlake.runQuery", runQuery],
+  ["starlake.yml2gv", runYml2gv],
+  ["starlake.yml2xls", runYml2xls]
+]);
+
+
 let log = vscode.window.createOutputChannel("starlake log");
 let currentEnv = "None"
 let switchEnvItem: vscode.StatusBarItem
@@ -106,8 +118,7 @@ function dryRunSubscribe(context: vscode.ExtensionContext) {
 
 	);	
 }
-	
-	
+
 function updateStatusBarItems(): void {
     updateProjectIdItem();
 }
@@ -116,12 +127,12 @@ function updateProjectIdItem(): void {
     projectItem.text = getCurrentProjectId() || 'Choose Project'
 }
 
-
 function buildEnv(logLevel?: string) {
 	let result = {
 		env: {
 			...process.env, 
 			COMET_ROOT: vscode.workspace.workspaceFolders![0].uri.fsPath,
+			COMET_METADATA: path.join(vscode.workspace.workspaceFolders![0].uri.fsPath, "metadata"),
 			COMET_ENV: currentEnv,
 			SPARK_DIR: config.sparkDir,
 			SPARK_HOME: config.sparkDir,
@@ -316,6 +327,73 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 					compileQueryData = ""
 					if (code !== 0)
 						vscode.window.showErrorMessage('Transform failed');
+				});
+			}
+		}
+	}
+}
+
+function runYml2gv(uri:vscode.Uri): void {
+	if(vscode.workspace.workspaceFolders !== undefined) {
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		let metadataPath = path.join(wf, "metadata")
+		let outPath = path.join(wf, "out")
+		if (!fs.existsSync(outPath)) 
+			fs.mkdirSync(outPath);
+		if (fs.existsSync(metadataPath)) {
+			logClear()
+			log.append("Generating Data Graph ...")
+			let cmd = starlakeCmd()
+			let dataGraphPath = path.join(outPath, "datagraph.dot")
+			if (cmd) {
+				let ls = child_process.spawn(cmd, ["yml2gv", "--output", dataGraphPath], buildEnv("INFO"));
+				ls.stdout.on('data', function (data) {
+					log.append(data.toString())
+				});
+				ls.stderr.on('data', function (data) {
+					log.append(data.toString())
+				});
+				ls.on('exit', function (code) {				
+					if (code !== 0)
+						vscode.window.showErrorMessage('Data Graph Generation failed');
+					else {
+						vscode.workspace.openTextDocument(vscode.Uri.parse(dataGraphPath)).then((a: vscode.TextDocument) => {
+							vscode.commands.executeCommand('graphviz.preview', dataGraphPath);
+							vscode.window.showInformationMessage(`Success: ${dataGraphPath}`);
+							vscode.window.showInformationMessage("You may need to install a GraphViz extension");
+						});
+					} 
+						
+				});
+			}
+		}
+	}
+}
+
+function runYml2xls(uri:vscode.Uri): void {
+	if(vscode.workspace.workspaceFolders !== undefined) {
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		let metadataPath = path.join(wf, "metadata");
+		let outPath = path.join(wf, "out");
+		if (!fs.existsSync(outPath))
+			fs.mkdirSync(outPath);
+		if (fs.existsSync(metadataPath)) {
+			logClear();
+			log.append("Generating Excel Files ...");
+			let cmd = starlakeCmd();
+			if (cmd) {
+				let ls = child_process.spawn(cmd, ["yml2xls", "--xls", outPath], buildEnv("INFO"));
+				ls.stdout.on('data', function (data) {
+					log.append(data.toString())
+				});
+				ls.stderr.on('data', function (data) {
+					log.append(data.toString())
+				});
+				ls.on('exit', function (code) {				
+					if (code !== 0)
+						vscode.window.showErrorMessage('Excel Files could not be generated');
+					else
+						vscode.window.showInformationMessage(`XLS files located in ${outPath}`);
 				});
 			}
 		}
@@ -532,15 +610,6 @@ function setProjectCommand(): void {
         })
         .catch(error => vscode.window.showErrorMessage(error.message));
 }
-
-type CommandMap = Map<string, (uri:vscode.Uri) => void>;
-let commands: CommandMap = new Map<string, (uri:vscode.Uri) => void>([
-  ["starlake.validate", runValidate],
-  ["starlake.load", runLoad],
-  ["starlake.previewJobQuery", previewJobQuery],
-  ["starlake.runjob", runJob],
-  ["starlake.runQuery", runQuery]
-]);
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed

@@ -107,7 +107,16 @@
       {
         "command": "starlake.dryRun",
         "title": "Starlake: Dry Run"
+      },
+      {
+        "command": "starlake.yml2gv",
+        "title": "Starlake: Generate Data Graph"
+      },
+      {
+        "command": "starlake.yml2xls",
+        "title": "Starlake: Generate Excel Files"
       }
+
     ],
     "menus": {
       "explorer/context": [
@@ -125,7 +134,18 @@
           "when": "resourcePath =~ /metadata/",
           "command": "starlake.validate",
           "group": "Starlake@1"
+        },
+        {
+          "when": "resourcePath =~ /metadata/",
+          "command": "starlake.yml2gv",
+          "group": "Starlake@1"
+        },
+        {
+          "when": "resourcePath =~ /metadata/",
+          "command": "starlake.yml2xls",
+          "group": "Starlake@1"
         }
+
       ],
       "editor/context": [
         {
