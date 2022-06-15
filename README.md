@@ -8,13 +8,15 @@
 * Run Jobs
 
 ## Installation
-
 - Download Spark from https://spark.apache.org
 - Download Starlake assembly from https://s01.oss.sonatype.org/content/repositories/releases/ai/starlake/
 - Download starlake.cmd on Windows or starlake.sh on MacOs / Linux from https://github.com/starlake-ai/starlake/tree/master/cli and copy it in the directory where you downloaded the Starlake assembly
 
 Profit.
 
+## About Google Cloud Setup
+To list your Google Cloud projects, you first need to set your default application credentials
+$ gcloud auth application-default login
 ## Extension Settings
 
 This extension contributes the following settings:
@@ -29,5 +31,3 @@ This extension contributes the following settings:
 ### 0.0.1
 
 Initial release
-
-
