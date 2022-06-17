@@ -8,11 +8,16 @@
 * Run Jobs
 
 ## Installation
-- Download Spark from https://spark.apache.org
-- Download Starlake assembly from https://s01.oss.sonatype.org/content/repositories/releases/ai/starlake/
-- Download starlake.cmd on Windows or starlake.sh on MacOs / Linux from https://github.com/starlake-ai/starlake/tree/master/cli and copy it in the directory where you downloaded the Starlake assembly
+
+* Download Spark from https://spark.apache.org
+* Download Starlake assembly from https://s01.oss.sonatype.org/content/repositories/releases/ai/starlake/
+* Download starlake.cmd on Windows or starlake.sh on MacOs / Linux from https://github.com/starlake-ai/starlake/tree/master/cli and copy it in the directory where you downloaded the Starlake assembly
 
 Profit.
+
+## Useful extensions to install 
+- Log Output Colorizer: https://marketplace.visualstudio.com/items?itemName=IBM.output-colorizer
+- GraphViz (dot) language support: https://marketplace.visualstudio.com/items?itemName=joaompinto.vscode-graphviz
 
 ## About Google Cloud Setup
 To list your Google Cloud projects, you first need to set your default application credentials

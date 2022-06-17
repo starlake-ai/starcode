@@ -3,8 +3,9 @@
   "displayName": "Starlake",
   "description": "Starlake Dev Env",
   "publisher": "Starlake",
-  "version": "0.0.5",
+  "version": "0.0.7",
   "homepage": "https://www.starlake.ai",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.60.0"
   },
@@ -13,7 +14,9 @@
     "url": "https://github.com/starlake-ai/starcode.git"
   },  
   "categories": [
-    "Other"
+    "Programming Languages",
+    "Snippets",
+    "Formatters"
   ],
   "activationEvents": [
     "onStartupFinished"

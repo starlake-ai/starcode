@@ -154,14 +154,22 @@ function runValidate(uri:vscode.Uri): void {
 			logClear()
 			let cmd = starlakeCmd()
 			if (cmd) {
+				let outPath = path.join(wf, "out")
+				let runLog = path.join(outPath, "run.log")
+				const runLogFd = fs.openSync(runLog, 'w')
+				fs.closeSync(runLogFd)
 				let ls = child_process.spawn(cmd, ["validate"], buildEnv());
 				ls.stdout.on('data', function (data) {
-					log.append(data.toString())
-					validateOutput += data.toString()
-				});
+					let dataStr = data.toString()
+					log.append(dataStr)
+					validateOutput += dataStr
+					fs.appendFileSync(runLog, dataStr)
+					});
 				ls.stderr.on('data', function (data) {
-					log.append(data.toString())
-					validateOutput += data.toString()
+					let dataStr = data.toString()
+					log.append(dataStr)
+					validateOutput += dataStr
+					fs.appendFileSync(runLog, dataStr)
 				});
 				ls.on('exit', function (code) {
 					let startIndex = validateOutput.indexOf("START VALIDATION RESULTS: ")
@@ -367,7 +375,7 @@ function runYml2gv(uri:vscode.Uri): void {
 			if (cmd) {
 				let ls = child_process.spawn(cmd, ["yml2gv", "--output", dataGraphPath], buildEnv("INFO"));
 				ls.stdout.on('data', function (data) {
-					log.append(data.toString())
+					  log.append(data.toString())
 				});
 				ls.stderr.on('data', function (data) {
 					log.append(data.toString())
