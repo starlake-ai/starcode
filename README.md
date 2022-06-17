@@ -16,6 +16,7 @@ Profit.
 
 ## About Google Cloud Setup
 To list your Google Cloud projects, you first need to set your default application credentials
+
 $ gcloud auth application-default login
 ## Extension Settings
 

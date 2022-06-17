@@ -2,11 +2,16 @@
   "name": "starlake",
   "displayName": "Starlake",
   "description": "Starlake Dev Env",
-  "publisher": "starlake",
-  "version": "0.0.1",
+  "publisher": "Starlake",
+  "version": "0.0.5",
+  "homepage": "https://www.starlake.ai",
   "engines": {
     "vscode": "^1.60.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/starlake-ai/starcode.git"
+  },  
   "categories": [
     "Other"
   ],

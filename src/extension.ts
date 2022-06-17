@@ -166,7 +166,7 @@ function runValidate(uri:vscode.Uri): void {
 				ls.on('exit', function (code) {
 					let startIndex = validateOutput.indexOf("START VALIDATION RESULTS: ")
 					let endIndex = validateOutput.indexOf("END VALIDATION RESULTS")
-					let errorFound = validateOutput.indexOf(" ERROR ") >=0
+					let errorFound = validateOutput.indexOf("0 errors found") != startIndex + "START VALIDATION RESULTS: ".length
 					if (startIndex >= 0 && endIndex > startIndex) {
 						let validationData = validateOutput.substring(startIndex+"START VALIDATION RESULTS: ".length, endIndex)
 						log.append(validationData)
@@ -187,6 +187,7 @@ function runValidate(uri:vscode.Uri): void {
 
 
 function starlakeCmd(): string | undefined {
+
 	if (!config.starlakeBin) {
 		vscode.window.showErrorMessage("Set 'Starlake Bin' to the path of your starlake assembly")
 	}
@@ -292,7 +293,18 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 					if (index > 0) {
 						jobname =jobname.substring(0, index)
 					}
-				} else {
+				} 
+				else if (currentlyOpenTabfileName.endsWith(".sql")) {
+					let selection = vscode.window.activeTextEditor!.selection;
+					let query = ""
+					let myUri = uri || vscode.window.activeTextEditor!.document.uri
+					if (selection.isEmpty) 
+						query = query = fs.readFileSync(myUri.fsPath, 'utf8');
+					else 
+						query = vscode.window.activeTextEditor!.document.getText(selection).trim();
+					executeQuery(query, !!isDryRun)
+				}
+				else {
 					return
 				}
 			}
@@ -303,7 +315,11 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 			log.append("Computing Job request ...")
 			let cmd = starlakeCmd()
 			if (cmd) {
+				try {
 				let ls = child_process.spawn(cmd, ["transform", "--name", jobname, "--compile"], buildEnv("INFO"));
+				ls.on('error',function (err) {
+					console.log('Failed to start child process.');
+				});
 				ls.stdout.on('data', function (data) {
 					compileQueryData += data.toString()
 				});
@@ -328,6 +344,9 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 					if (code !== 0)
 						vscode.window.showErrorMessage('Transform failed');
 				});
+			} catch(e: any){
+				console.log(e.Message);
+			}
 			}
 		}
 	}
