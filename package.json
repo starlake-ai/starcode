@@ -3,7 +3,7 @@
   "displayName": "Starlake",
   "description": "Starlake Dev Env",
   "publisher": "Starlake",
-  "version": "0.0.7",
+  "version": "0.1.2",
   "homepage": "https://www.starlake.ai",
   "license": "MIT",
   "engines": {
@@ -26,6 +26,11 @@
     "configuration": {
       "title": "Starlake",
       "properties": {
+        "starlake.metadataDir": {
+          "type": "string",
+          "default": "metadata",
+          "description": "Metadata Folder Name"
+        },
         "starlake.sparkDir": {
           "type": "string",
           "default": "",

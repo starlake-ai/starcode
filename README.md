@@ -9,20 +9,31 @@
 
 ## Installation
 
-* Download Spark from https://spark.apache.org
+* Download and install Spark from https://spark.apache.org. Windows users should make sure that `winutils.exe` is present in the PATH.
 * Download Starlake assembly from https://s01.oss.sonatype.org/content/repositories/releases/ai/starlake/
 * Download starlake.cmd on Windows or starlake.sh on MacOs / Linux from https://github.com/starlake-ai/starlake/tree/master/cli and copy it in the directory where you downloaded the Starlake assembly
 
 Profit.
 
-## Useful extensions to install 
-- Log Output Colorizer: https://marketplace.visualstudio.com/items?itemName=IBM.output-colorizer
-- GraphViz (dot) language support: https://marketplace.visualstudio.com/items?itemName=joaompinto.vscode-graphviz
+## Useful extensions to install
+
+* Log Output Colorizer: https://marketplace.visualstudio.com/items?itemName=IBM.output-colorizer
+* GraphViz (dot) language support: https://marketplace.visualstudio.com/items?itemName=joaompinto.vscode-graphviz
 
 ## About Google Cloud Setup
+
+Make sure that the gcloud command is present in your PATH: This is a requirement for the GCloud API to work.
+
+
 To list your Google Cloud projects, you first need to set your default application credentials
 
-$ gcloud auth application-default login
+`$ gcloud auth application-default login`
+
+Then set a default project 
+
+`$ gcloud config set core/project MY_PROJECT_ID` 
+
+
 ## Extension Settings
 
 This extension contributes the following settings:
@@ -31,6 +42,7 @@ This extension contributes the following settings:
 * `starlake.cometBin`: Reference directly your starlake assembly
 * `starlake.googleCloudStorageTemporaryBucket`: Temporary bucket to use when syncing to BigQuery (without the gs:// prefix)
 * `starlake.logLevel`: One of the level supported by for Log4J
+* `starlake.metadataDir`: Metadata folder name. "metadata" by default
 
 ## Release Notes
 

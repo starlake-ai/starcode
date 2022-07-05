@@ -14,6 +14,7 @@ import { stringify } from 'csv-stringify';
 import easyTable = require("easy-table");
 import { Resource } from '@google-cloud/resource';
 import {parse as parseYaml} from 'yaml';
+import { ChildProcessWithoutNullStreams } from 'child_process';
 
 type CommandMap = Map<string, (uri:vscode.Uri) => void>;
 let commands: CommandMap = new Map<string, (uri:vscode.Uri) => void>([
@@ -132,7 +133,7 @@ function buildEnv(logLevel?: string) {
 		env: {
 			...process.env, 
 			COMET_ROOT: vscode.workspace.workspaceFolders![0].uri.fsPath,
-			COMET_METADATA: path.join(vscode.workspace.workspaceFolders![0].uri.fsPath, "metadata"),
+			COMET_METADATA: path.join(vscode.workspace.workspaceFolders![0].uri.fsPath, config.metadataDir),
 			COMET_ENV: currentEnv,
 			SPARK_DIR: config.sparkDir,
 			SPARK_HOME: config.sparkDir,
@@ -149,16 +150,18 @@ function runValidate(uri:vscode.Uri): void {
 	let validateOutput = ""
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, "metadata")
+		let metadataPath = path.join(wf, config.metadataDir)
 		if (fs.existsSync(metadataPath)) {
 			logClear()
 			let cmd = starlakeCmd()
 			if (cmd) {
 				let outPath = path.join(wf, "out")
+				if (!fs.existsSync(outPath)) 
+				fs.mkdirSync(outPath);
 				let runLog = path.join(outPath, "run.log")
 				const runLogFd = fs.openSync(runLog, 'w')
 				fs.closeSync(runLogFd)
-				let ls = child_process.spawn(cmd, ["validate"], buildEnv());
+				let ls = spawn(cmd, ["validate"]);
 				ls.stdout.on('data', function (data) {
 					let dataStr = data.toString()
 					log.append(dataStr)
@@ -174,7 +177,7 @@ function runValidate(uri:vscode.Uri): void {
 				ls.on('exit', function (code) {
 					let startIndex = validateOutput.indexOf("START VALIDATION RESULTS: ")
 					let endIndex = validateOutput.indexOf("END VALIDATION RESULTS")
-					let errorFound = validateOutput.indexOf("0 errors found") != startIndex + "START VALIDATION RESULTS: ".length
+					let errorFound = startIndex >= 0 && validateOutput.indexOf("0 errors found") != startIndex + "START VALIDATION RESULTS: ".length
 					if (startIndex >= 0 && endIndex > startIndex) {
 						let validationData = validateOutput.substring(startIndex+"START VALIDATION RESULTS: ".length, endIndex)
 						log.append(validationData)
@@ -195,27 +198,31 @@ function runValidate(uri:vscode.Uri): void {
 
 
 function starlakeCmd(): string | undefined {
-
+	let res = ""
 	if (!config.starlakeBin) {
 		vscode.window.showErrorMessage("Set 'Starlake Bin' to the path of your starlake assembly")
 	}
 	else if (process.platform == 'win32') {
-		return path.join(path.dirname(config.starlakeBin), "starlake.cmd")
+		res = path.join(path.dirname(config.starlakeBin), "starlake.cmd")
 	}
 	else {
-		return path.join(path.dirname(config.starlakeBin), "starlake.sh")
+		res = path.join(path.dirname(config.starlakeBin), "starlake.sh")
 	}
+	if (!fs.existsSync(res))
+		vscode.window.showErrorMessage(`Path ${res} not found`);
+	
+	return res
 }
 
 function runLoad(uri:vscode.Uri): void {
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, "metadata")
+		let metadataPath = path.join(wf, config.metadataDir)
 		if (fs.existsSync(metadataPath)) {
 			logClear()
 			let cmd = starlakeCmd()
 			if (cmd) {
-				let ls = child_process.spawn(cmd, ["load"], buildEnv());
+				let ls = spawn(cmd, ["load"]);
 				ls.stdout.on('data', function (data) {
 					log.append(data.toString());
 				});
@@ -237,7 +244,7 @@ function runLoad(uri:vscode.Uri): void {
 function runJob (uri:vscode.Uri): void {
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, "metadata")
+		let metadataPath = path.join(wf, config.metadataDir)
 		if (fs.existsSync(metadataPath)) {
 			//vscode.window.showInformationMessage(wf);
 			let currentlyOpenTabfilePath = uri ? uri.fsPath : vscode.window.activeTextEditor!.document.fileName;
@@ -259,7 +266,7 @@ function runJob (uri:vscode.Uri): void {
 			logClear()
 			let cmd = starlakeCmd()
 			if (cmd) {
-				let ls = child_process.spawn(cmd, ["transform", "--name", jobname], buildEnv());
+				let ls = spawn(cmd, ["transform", "--name", jobname]);
 				ls.stdout.on('data', function (data) {
 					log.append(data.toString());
 				});
@@ -285,7 +292,7 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 	let compileQueryData = ""
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, "metadata")
+		let metadataPath = path.join(wf, config.metadataDir)
 		if (fs.existsSync(metadataPath)) {
 			//vscode.window.showInformationMessage(wf);
 			let currentlyOpenTabfilePath = uri ? uri.fsPath : vscode.window.activeTextEditor!.document.fileName;
@@ -296,21 +303,25 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 					jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".comet.yml".length)
 
 				} else if (currentlyOpenTabfileName.endsWith(".sql")) {
-					jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".sql".length)
-					let index = jobname.indexOf('.')
-					if (index > 0) {
-						jobname =jobname.substring(0, index)
+					let cometYaml = currentlyOpenTabfilePath.substring(0, currentlyOpenTabfilePath.length -"sql".length) + "comet.yml"
+					if (fs.existsSync(cometYaml)) {
+						jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".sql".length)
+						let index = jobname.indexOf('.')
+						if (index > 0) {
+							jobname =jobname.substring(0, index)
+						}
 					}
-				} 
-				else if (currentlyOpenTabfileName.endsWith(".sql")) {
-					let selection = vscode.window.activeTextEditor!.selection;
-					let query = ""
-					let myUri = uri || vscode.window.activeTextEditor!.document.uri
-					if (selection.isEmpty) 
-						query = query = fs.readFileSync(myUri.fsPath, 'utf8');
-					else 
-						query = vscode.window.activeTextEditor!.document.getText(selection).trim();
-					executeQuery(query, !!isDryRun)
+ 					else {
+						let selection = vscode.window.activeTextEditor!.selection;
+						let query = ""
+						let myUri = uri || vscode.window.activeTextEditor!.document.uri
+						if (selection.isEmpty) 
+							query = query = fs.readFileSync(myUri.fsPath, 'utf8');
+						else 
+							query = vscode.window.activeTextEditor!.document.getText(selection).trim();
+						executeQuery(query, !!isDryRun)
+						return
+					}
 				}
 				else {
 					return
@@ -324,7 +335,7 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 			let cmd = starlakeCmd()
 			if (cmd) {
 				try {
-				let ls = child_process.spawn(cmd, ["transform", "--name", jobname, "--compile"], buildEnv("INFO"));
+				let ls = spawn(cmd, ["transform", "--name", jobname, "--compile"], "INFO");
 				ls.on('error',function (err) {
 					console.log('Failed to start child process.');
 				});
@@ -363,7 +374,7 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 function runYml2gv(uri:vscode.Uri): void {
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		let metadataPath = path.join(wf, "metadata")
+		let metadataPath = path.join(wf, config.metadataDir)
 		let outPath = path.join(wf, "out")
 		if (!fs.existsSync(outPath)) 
 			fs.mkdirSync(outPath);
@@ -373,7 +384,7 @@ function runYml2gv(uri:vscode.Uri): void {
 			let cmd = starlakeCmd()
 			let dataGraphPath = path.join(outPath, "datagraph.dot")
 			if (cmd) {
-				let ls = child_process.spawn(cmd, ["yml2gv", "--output", dataGraphPath], buildEnv("INFO"));
+				let ls = spawn(cmd, ["yml2gv", "--output", dataGraphPath], "INFO");
 				ls.stdout.on('data', function (data) {
 					  log.append(data.toString())
 				});
@@ -397,10 +408,23 @@ function runYml2gv(uri:vscode.Uri): void {
 	}
 }
 
+
+function spawn(cmd: string, args: Array<string>, logLevel?: string): ChildProcessWithoutNullStreams {
+	if (process.platform == 'win32') {
+		return child_process.spawn(cmd, args, buildEnv(logLevel));
+	}
+	else {
+		args.unshift(cmd)
+		return child_process.spawn("sh", args, buildEnv(logLevel));
+	}
+	
+}
+
+
 function runYml2xls(uri:vscode.Uri): void {
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		let metadataPath = path.join(wf, "metadata");
+		let metadataPath = path.join(wf, config.metadataDir);
 		let outPath = path.join(wf, "out");
 		if (!fs.existsSync(outPath))
 			fs.mkdirSync(outPath);
@@ -409,7 +433,7 @@ function runYml2xls(uri:vscode.Uri): void {
 			log.append("Generating Excel Files ...");
 			let cmd = starlakeCmd();
 			if (cmd) {
-				let ls = child_process.spawn(cmd, ["yml2xls", "--xls", outPath], buildEnv("INFO"));
+				let ls = spawn(cmd, ["yml2xls", "--xls", outPath], "INFO");
 				ls.stdout.on('data', function (data) {
 					log.append(data.toString())
 				});
@@ -459,7 +483,7 @@ function logClear() {
 function runQuery(uri:vscode.Uri): void {
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		let metadataPath = path.join(wf, "metadata")
+		let metadataPath = path.join(wf, config.metadataDir)
 		if (fs.existsSync(metadataPath)) {
 			logClear()
 			let myUri = uri || vscode.window.activeTextEditor!.document.uri
@@ -485,7 +509,7 @@ function runQuery(uri:vscode.Uri): void {
 function runDry (uri:vscode.Uri): void {
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, "metadata")
+		let metadataPath = path.join(wf, config.metadataDir)
 		if (fs.existsSync(metadataPath)) {
 			let selection = vscode.window.activeTextEditor!.selection;
 			let query = ""
@@ -529,8 +553,8 @@ function executeQuery(queryText: string, isDryRun?: boolean) {
 		vscode.window.showInformationMessage(`Dry run: ${totalBytesStr}`);
 		if (!isDryRun)
 			return job.getQueryResults({
-			autoPaginate: true
-			});
+						autoPaginate: true
+					});
 	  })
 	  .catch(err => {
 		extensionContext.workspaceState.update('bqProjectId', undefined);
@@ -598,7 +622,7 @@ function writeResults(jobId: string, rows: Array<any>): void {
 function isStarlakeWorkspace() {
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, "metadata")
+		let metadataPath = path.join(wf, config.metadataDir)
 		return fs.existsSync(metadataPath)
 	} 
 	else {
@@ -609,7 +633,7 @@ function isStarlakeWorkspace() {
 function listEnvs() {
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, "metadata")
+		let metadataPath = path.join(wf, config.metadataDir)
 		let envFiles = fs.readdirSync(metadataPath).filter(fn => fn !== 'env.comet.yml' && fn.endsWith('.comet.yml') && fn.startsWith('env.'));
 		let result = envFiles.map(fn => fn.substring(4, fn.length - ".comet.yml".length))
 		result.push('None')
@@ -625,7 +649,6 @@ function setProjectCommand(): void {
     let options: vscode.InputBoxOptions = {
         ignoreFocusOut: false,
     }
-
     resourceClient.getProjects()
         .then(p => p[0])
         .then(ps => ps.map(p => p.id))
@@ -671,9 +694,11 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				}
 			)			
-		  );		
+		  );
+		  vscode.window.showInformationMessage("Starlake Workspace loaded")
+
 	} else {
-		vscode.window.showErrorMessage("Invalid Workspace folder. Please make sure you open a valid starlake project")
+		// vscode.window.showErrorMessage("Invalid Workspace folder. Please make sure you open a valid starlake project")
 	}
 }
 
@@ -688,7 +713,7 @@ export function deactivate() {}
 
 function loadEnv(): Map<string, string> {
     const rootFolder = vscode.workspace.workspaceFolders![0].uri.fsPath
-	let metadataPath = path.join(rootFolder, "metadata")
+	let metadataPath = path.join(rootFolder, config.metadataDir)
 	let envPath = path.join(metadataPath, "env.comet.yml")
 	let result = new Map<string, string>()
 	if (fs.existsSync(envPath)) {
@@ -720,7 +745,7 @@ function getEngine(jobPath: string): any {
 		const content = fs.readFileSync(jobPath, 'utf8')
 		let jobObject = parseYaml(content)
 		if (jobObject.transform) {
-			let engine = jobObject.transform.engine as string
+			let engine = (jobObject.transform.engine as string).trim()
 			if (engine.indexOf("}") > 0) {
 				let engineVar = engine.replace("${", "").replace("{{", "").replace("}", "")
 				let engineValue = loadEnv().get(engineVar)
