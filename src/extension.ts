@@ -131,7 +131,6 @@ function updateProjectIdItem(): void {
 function buildEnv(logLevel?: string) {
 	let result = {
 		env: {
-			...process.env, 
 			COMET_ROOT: vscode.workspace.workspaceFolders![0].uri.fsPath,
 			COMET_METADATA: path.join(vscode.workspace.workspaceFolders![0].uri.fsPath, config.metadataDir),
 			COMET_ENV: currentEnv,
@@ -410,12 +409,26 @@ function runYml2gv(uri:vscode.Uri): void {
 
 
 function spawn(cmd: string, args: Array<string>, logLevel?: string): ChildProcessWithoutNullStreams {
+	var cmdLine = args.slice();
+	cmdLine.unshift(cmd);
+	let env = buildEnv(logLevel)
+	let completeEnv = {
+		...process.env, 
+		...env
+	}
+
+	log.append("\n--------\n")
+	log.append(JSON.stringify(env,null,2))
+	log.append("\n\n")
+	log.append(cmdLine.join(' '))
+	log.append("\n--------\n")
+
 	if (process.platform == 'win32') {
-		return child_process.spawn(cmd, args, buildEnv(logLevel));
+		return child_process.spawn(cmd, args, completeEnv);
 	}
 	else {
 		args.unshift(cmd)
-		return child_process.spawn("sh", args, buildEnv(logLevel));
+		return child_process.spawn("sh", args, completeEnv);
 	}
 	
 }
@@ -711,6 +724,35 @@ export function deactivate() {}
 /////////////////////////////////////////
 /////////////////////////////////////////
 
+function getEngine(jobPath: string): any {
+	if (fs.existsSync(jobPath)) {
+		const content = fs.readFileSync(jobPath, 'utf8')
+		let jobObject = parseYaml(content)
+		if (jobObject.transform) {
+			let engine = (jobObject.transform.engine as string).trim()
+			if (engine.indexOf("}") > 0) {
+				let engineVar = engine.replace("${", "").replace("{{", "").replace("}", "")
+				let engineValue = loadEnv().get(engineVar)
+				if (engineValue == 'undefined') 
+					return 'None'
+				else
+					return engineValue
+
+			}
+		}
+		else {
+			vscode.window.showErrorMessage(`transform tag not found in job file ${jobPath}`);
+		}
+	}
+	else {
+		vscode.window.showErrorMessage(`Job file ${jobPath} not found`);
+		return "None"
+	}
+}
+
+
+
+
 function loadEnv(): Map<string, string> {
     const rootFolder = vscode.workspace.workspaceFolders![0].uri.fsPath
 	let metadataPath = path.join(rootFolder, config.metadataDir)
@@ -738,31 +780,4 @@ function loadEnv(): Map<string, string> {
 	return result
 }
 
-
-
-function getEngine(jobPath: string): any {
-	if (fs.existsSync(jobPath)) {
-		const content = fs.readFileSync(jobPath, 'utf8')
-		let jobObject = parseYaml(content)
-		if (jobObject.transform) {
-			let engine = (jobObject.transform.engine as string).trim()
-			if (engine.indexOf("}") > 0) {
-				let engineVar = engine.replace("${", "").replace("{{", "").replace("}", "")
-				let engineValue = loadEnv().get(engineVar)
-				if (engineValue == 'undefined') 
-					return 'None'
-				else
-					return engineValue
-
-			}
-		}
-		else {
-			vscode.window.showErrorMessage(`transform tag not found in job file ${jobPath}`);
-		}
-	}
-	else {
-		vscode.window.showErrorMessage(`Job file ${jobPath} not found`);
-		return "None"
-	}
-}
 
