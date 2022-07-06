@@ -3,20 +3,19 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
-import * as child_process from 'child_process';
 import { loadConfig, ISettings } from './settings';
-const { flatten } = require('safe-flat')
-import { format } from 'sql-formatter';
-
-import { BigQuery } from '@google-cloud/bigquery';
-import { stringify } from 'csv-stringify';
-import easyTable = require("easy-table");
-import { Resource } from '@google-cloud/resource';
 import {parse as parseYaml} from 'yaml';
-import { ChildProcessWithoutNullStreams } from 'child_process';
 import { loadEnv } from './env'
 import { globals } from './globals'
+import { runValidate } from './run/validate'
+import { runLoad } from './run/load'
+import { runJob } from './run/job'
+import { previewJobQuery } from './run/previewjob'
+import { runYml2gv } from './run/yml2gv'
+import { runYml2xls } from './run/yml2xls'
+import { runXls2yml } from './run/xls2yml'
+import { runQuery } from './run/query'
+import { runDry } from './run/dry'
 
 type CommandMap = Map<string, (uri:vscode.Uri) => void>;
 let commands: CommandMap = new Map<string, (uri:vscode.Uri) => void>([
@@ -30,70 +29,53 @@ let commands: CommandMap = new Map<string, (uri:vscode.Uri) => void>([
   ["starlake.xls2yml", runXls2yml]
 ]);
 
-let switchEnvItem: vscode.StatusBarItem
-let selectedFormat = "table"
-let selectedFormatItem: vscode.StatusBarItem
-let config: ISettings
-let projectItem: vscode.StatusBarItem;
-let resourceClient: Resource = new Resource();
-let client = new BigQuery()
-let extensionContext: vscode.ExtensionContext;
 
-function createStatusBarItem(priority: number): vscode.StatusBarItem {
-    const alignment = vscode.StatusBarAlignment.Right;
-    return vscode.window.createStatusBarItem(alignment, priority);
-}
 
-function createSwitchEnvItem(context: vscode.ExtensionContext): vscode.StatusBarItem
+function createSwitchEnvItem(context: vscode.ExtensionContext)
 {
-	switchEnvItem = createStatusBarItem(1);
-    switchEnvItem.command = 'starlake.switchEnv';
+    globals.switchEnvItem.command = 'starlake.switchEnv';
     context.subscriptions.push(vscode.commands.registerCommand('starlake.switchEnv', async () => 
     {
 		let envs = listEnvs()
         globals.currentEnv = await vscode.window.showQuickPick(
             envs,
             { placeHolder: 'Select Env' }) || 'None';
-		switchEnvItem.text = `Env(${globals.currentEnv})`
-		extensionContext.workspaceState.update('cometEnv', globals.currentEnv);
+			globals.switchEnvItem.text = `Env(${globals.currentEnv})`
+			globals.extensionContext.workspaceState.update('cometEnv', globals.currentEnv);
     }));
 	
-	globals.currentEnv = extensionContext.workspaceState.get('cometEnv') || 'None'
-    switchEnvItem.text = `Starlake Env(${globals.currentEnv})`;
-    switchEnvItem.tooltip = `Starlake Env`;
-    switchEnvItem.show();
-	return switchEnvItem
+	globals.currentEnv = globals.extensionContext.workspaceState.get('cometEnv') || 'None'
+    globals.switchEnvItem.text = `Starlake Env(${globals.currentEnv})`;
+    globals.switchEnvItem.tooltip = `Starlake Env`;
+    globals.switchEnvItem.show();
 }
-function createSelectedFormatItem(context: vscode.ExtensionContext): vscode.StatusBarItem
+function createSelectedFormatItem(context: vscode.ExtensionContext)
 {
-	selectedFormatItem = createStatusBarItem(1);
-    selectedFormatItem.command = 'starlake.selectFormat';
+    globals.selectedFormatItem.command = 'starlake.selectFormat';
     context.subscriptions.push(vscode.commands.registerCommand('starlake.selectFormat', async () => 
     {
-        selectedFormat = await vscode.window.showQuickPick(
+        globals.selectedFormat = await vscode.window.showQuickPick(
             ['csv', 'json', 'table'],
             { placeHolder: 'Results Format' }) || 'table';
-			selectedFormatItem.text = `Format(${selectedFormat})`
+			globals.selectedFormatItem.text = `Format(${globals.selectedFormat})`
 
     }));
-    context.subscriptions.push(selectedFormatItem);
-    selectedFormatItem.text = `Format(table)`;
-    selectedFormatItem.tooltip = `Query Results Format`;
-    selectedFormatItem.show();
-	return selectedFormatItem
+    context.subscriptions.push(globals.selectedFormatItem);
+    globals.selectedFormatItem.text = `Format(table)`;
+    globals.selectedFormatItem.tooltip = `Query Results Format`;
+    globals.selectedFormatItem.show();
 }
 
-function createProjectItem(context: vscode.ExtensionContext): vscode.StatusBarItem {
-    const item = createStatusBarItem(1);
-    item.command = "starlake.setProjectCommand";
-	item.text = "No GCP project selected yet"
+function createProjectItem(context: vscode.ExtensionContext)
+{
+    globals.projectItem.command = "starlake.setProjectCommand";
+	globals.projectItem.text = "No GCP project selected yet"
 	vscode.commands.registerCommand(
 		'starlake.setProjectCommand',
 		() => setProjectCommand()
 	)
-	item.tooltip = `GCP project`
-	item.show();
-    return item;
+	globals.projectItem.tooltip = `GCP project`
+	globals.projectItem.show();
 }
 
 function dryRunSubscribe(context: vscode.ExtensionContext) {
@@ -120,553 +102,10 @@ function dryRunSubscribe(context: vscode.ExtensionContext) {
 	);	
 }
 
-function updateStatusBarItems(): void {
-    updateProjectIdItem();
-}
-
-function updateProjectIdItem(): void {
-    projectItem.text = getCurrentProjectId() || 'Choose Project'
-}
-
-function buildEnv(logLevel?: string) {
-	let result = {
-		env: {
-			COMET_ROOT: vscode.workspace.workspaceFolders![0].uri.fsPath,
-			COMET_METADATA: path.join(vscode.workspace.workspaceFolders![0].uri.fsPath, config.metadataDir),
-			COMET_ENV: globals.currentEnv,
-			SPARK_DIR: config.sparkDir,
-			SPARK_HOME: config.sparkDir,
-			COMET_BIN: config.starlakeBin,
-			COMET_LOGLEVEL: logLevel || config.logLevel || 'INFO',
-			GCLOUD_PROJECT: getCurrentProjectId() || "",
-			TEMPORARY_GCS_BUCKET: config.googleCloudStorageTemporaryBucket || ""
-		}
-	}
-	return result
-}
-
-function runValidate(uri:vscode.Uri): void {
-	let validateOutput = ""
-	if(vscode.workspace.workspaceFolders !== undefined) {
-		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, config.metadataDir)
-		if (fs.existsSync(metadataPath)) {
-			logClear()
-			let cmd = starlakeCmd()
-			if (cmd) {
-				let outPath = path.join(wf, "out")
-				if (!fs.existsSync(outPath)) 
-				fs.mkdirSync(outPath);
-				let runLog = path.join(outPath, "run.log")
-				const runLogFd = fs.openSync(runLog, 'w')
-				fs.closeSync(runLogFd)
-				let ls = spawn(cmd, ["validate"]);
-				ls.stdout.on('data', function (data) {
-					let dataStr = data.toString()
-					globals.log.append(dataStr)
-					validateOutput += dataStr
-					fs.appendFileSync(runLog, dataStr)
-					});
-				ls.stderr.on('data', function (data) {
-					let dataStr = data.toString()
-					globals.log.append(dataStr)
-					validateOutput += dataStr
-					fs.appendFileSync(runLog, dataStr)
-				});
-				ls.on('exit', function (code) {
-					let startIndex = validateOutput.indexOf("START VALIDATION RESULTS: ")
-					let endIndex = validateOutput.indexOf("END VALIDATION RESULTS")
-					let errorFound = startIndex >= 0 && validateOutput.indexOf("0 errors found") != startIndex + "START VALIDATION RESULTS: ".length
-					if (startIndex >= 0 && endIndex > startIndex) {
-						let validationData = validateOutput.substring(startIndex+"START VALIDATION RESULTS: ".length, endIndex)
-						globals.log.append(validationData)
-					}
-					else {
-						globals.log.append(validateOutput);
-					}
-					if (errorFound || code !== 0)
-						vscode.window.showErrorMessage('Validation failed. See errors in log');
-					else
-						vscode.window.showInformationMessage('Validation succeeded');
-				});
-				validateOutput = ""
-			}
-		}
-	}
-}
-
-
-function starlakeCmd(): string | undefined {
-	let res = ""
-	if (!config.starlakeBin) {
-		vscode.window.showErrorMessage("Set 'Starlake Bin' to the path of your starlake assembly")
-	}
-	else if (process.platform == 'win32') {
-		res = path.join(extensionContext.extensionPath, "vscode-extension", "starlake.cmd")
-	}
-	else {
-		res = path.join(extensionContext.extensionPath, "vscode-extension", "starlake.sh")
-	}
-	if (!fs.existsSync(res))
-		vscode.window.showErrorMessage(`Path ${res} not found`);
-	
-	return res
-}
-
-function runLoad(uri:vscode.Uri): void {
-	if(vscode.workspace.workspaceFolders !== undefined) {
-		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, config.metadataDir)
-		if (fs.existsSync(metadataPath)) {
-			logClear()
-			let cmd = starlakeCmd()
-			if (cmd) {
-				let ls = spawn(cmd, ["load"]);
-				ls.stdout.on('data', function (data) {
-					globals.log.append(data.toString());
-				});
-				ls.stderr.on('data', function (data) {
-					globals.log.append(data.toString());
-				});
-				ls.on('exit', function (code) {
-					if (code !== 0)
-						vscode.window.showErrorMessage('Load failed ' + code);
-					else
-						vscode.window.showInformationMessage('Load succeeded ' + code);
-				});
-			}
-		}
-	}
-}
-
-
-function runJob (uri:vscode.Uri): void {
-	if(vscode.workspace.workspaceFolders !== undefined) {
-		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, config.metadataDir)
-		if (fs.existsSync(metadataPath)) {
-			//vscode.window.showInformationMessage(wf);
-			let currentlyOpenTabfilePath = uri ? uri.fsPath : vscode.window.activeTextEditor!.document.fileName;
-			let currentlyOpenTabfileName = path.basename(currentlyOpenTabfilePath);
-			let jobname = ""
-			if (currentlyOpenTabfileName.endsWith(".comet.yml")) {
-				jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".comet.yml".length)
-
-			} else if (currentlyOpenTabfileName.endsWith(".sql")) {
-				jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".sql".length)
-				let index = jobname.indexOf('.')
-				if (index > 0) {
-					jobname =jobname.substring(0, index)
-				}
-			}
-			else {
-				return
-			}
-			logClear()
-			let cmd = starlakeCmd()
-			if (cmd) {
-				let ls = spawn(cmd, ["transform", "--name", jobname]);
-				ls.stdout.on('data', function (data) {
-					globals.log.append(data.toString());
-				});
-				ls.stderr.on('data', function (data) {
-					globals.log.append(data.toString());
-				});
-				ls.on('exit', function (code) {
-					if (code !== 0)
-						vscode.window.showErrorMessage('Transform failed');
-					else
-						vscode.window.showInformationMessage('Transform success');
-				});
-			}
-		}
-	}
-}
-
-function previewJobQuery (uri:vscode.Uri): void {
-		executeJobQuery(uri, true)
-}
-
-function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
-	let compileQueryData = ""
-	if(vscode.workspace.workspaceFolders !== undefined) {
-		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, config.metadataDir)
-		if (fs.existsSync(metadataPath)) {
-			//vscode.window.showInformationMessage(wf);
-			let currentlyOpenTabfilePath = uri ? uri.fsPath : vscode.window.activeTextEditor!.document.fileName;
-			let currentlyOpenTabfileName = path.basename(currentlyOpenTabfilePath);
-			let jobname = ""
-			if (currentlyOpenTabfilePath.indexOf("jobs") >=0) {
-				if (currentlyOpenTabfileName.endsWith(".comet.yml")) {
-					jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".comet.yml".length)
-
-				} else if (currentlyOpenTabfileName.endsWith(".sql")) {
-					let cometYaml = currentlyOpenTabfilePath.substring(0, currentlyOpenTabfilePath.length -"sql".length) + "comet.yml"
-					if (fs.existsSync(cometYaml)) {
-						jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".sql".length)
-						let index = jobname.indexOf('.')
-						if (index > 0) {
-							jobname =jobname.substring(0, index)
-						}
-					}
- 					else {
-						let selection = vscode.window.activeTextEditor!.selection;
-						let query = ""
-						let myUri = uri || vscode.window.activeTextEditor!.document.uri
-						if (selection.isEmpty) 
-							query = query = fs.readFileSync(myUri.fsPath, 'utf8');
-						else 
-							query = vscode.window.activeTextEditor!.document.getText(selection).trim();
-						executeQuery(query, !!isDryRun)
-						return
-					}
-				}
-				else {
-					return
-				}
-			}
-			else {
-				return
-			}
-			logClear()
-			globals.log.append("Computing Job request ...")
-			let cmd = starlakeCmd()
-			if (cmd) {
-				try {
-				let ls = spawn(cmd, ["transform", "--name", jobname, "--compile"], "INFO");
-				ls.on('error',function (err) {
-					console.log('Failed to start child process.');
-				});
-				ls.stdout.on('data', function (data) {
-					compileQueryData += data.toString()
-				});
-				ls.stderr.on('data', function (data) {
-					compileQueryData += data.toString() 	
-				});
-				ls.on('exit', function (code) {				
-					let startIndex = compileQueryData.indexOf("START COMPILE SQL")
-					let endIndex = compileQueryData.indexOf("END COMPILE SQL")
-					if (startIndex >= 0 && endIndex > startIndex) {
-						let queryData = compileQueryData.substring(startIndex+'START COMPILE SQL'.length, endIndex)
-						logClear()
-						globals.log.append("Computed Job request:\n")
-						globals.log.append(format(queryData))
-						executeQuery(queryData, !!isDryRun)
-
-					}
-					else {
-						globals.log.append(compileQueryData);
-					}
-					compileQueryData = ""
-					if (code !== 0)
-						vscode.window.showErrorMessage('Transform failed');
-				});
-			} catch(e: any){
-				console.log(e.Message);
-			}
-			}
-		}
-	}
-}
-
-function runYml2gv(uri:vscode.Uri): void {
-	if(vscode.workspace.workspaceFolders !== undefined) {
-		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		let metadataPath = path.join(wf, config.metadataDir)
-		let outPath = path.join(wf, "out")
-		if (!fs.existsSync(outPath)) 
-			fs.mkdirSync(outPath);
-		if (fs.existsSync(metadataPath)) {
-			logClear()
-			globals.log.append("Generating Data Graph ...")
-			let cmd = starlakeCmd()
-			let dataGraphPath = path.join(outPath, "datagraph.dot")
-			if (cmd) {
-				let ls = spawn(cmd, ["yml2gv", "--output", dataGraphPath], "INFO");
-				ls.stdout.on('data', function (data) {
-					  globals.log.append(data.toString())
-				});
-				ls.stderr.on('data', function (data) {
-					globals.log.append(data.toString())
-				});
-				ls.on('exit', function (code) {				
-					if (code !== 0)
-						vscode.window.showErrorMessage('Data Graph Generation failed');
-					else {
-						vscode.workspace.openTextDocument(vscode.Uri.parse(dataGraphPath)).then((a: vscode.TextDocument) => {
-							vscode.commands.executeCommand('graphviz.preview', dataGraphPath);
-							vscode.window.showInformationMessage(`Success: ${dataGraphPath}`);
-							vscode.window.showInformationMessage("You may need to install a GraphViz extension");
-						});
-					} 
-						
-				});
-			}
-		}
-	}
-}
-
-
-function spawn(cmd: string, args: Array<string>, logLevel?: string): ChildProcessWithoutNullStreams {
-	var cmdLine = args.slice();
-	cmdLine.unshift(cmd);
-	let env = buildEnv(logLevel)
-	let completeEnv = {
-		...process.env, 
-		...env
-	}
-
-	globals.log.append("\n--------\n")
-	globals.log.append(JSON.stringify(env,null,2))
-	globals.log.append("\n\n")
-	globals.log.append(cmdLine.join(' '))
-	globals.log.append("\n--------\n")
-
-	if (process.platform == 'win32') {
-		return child_process.spawn(cmd, args, completeEnv);
-	}
-	else {
-		args.unshift(cmd)
-		return child_process.spawn("sh", args, completeEnv);
-	}
-	
-}
-
-
-function runYml2xls(uri:vscode.Uri): void {
-	if(vscode.workspace.workspaceFolders !== undefined) {
-		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		let metadataPath = path.join(wf, config.metadataDir);
-		let outPath = path.join(wf, "out");
-		if (!fs.existsSync(outPath))
-			fs.mkdirSync(outPath);
-		if (fs.existsSync(metadataPath)) {
-			logClear();
-			globals.log.append("Generating Excel Files ...");
-			let cmd = starlakeCmd();
-			if (cmd) {
-				let ls = spawn(cmd, ["yml2xls", "--xls", outPath], "INFO");
-				ls.stdout.on('data', function (data) {
-					globals.log.append(data.toString())
-				});
-				ls.stderr.on('data', function (data) {
-					globals.log.append(data.toString())
-				});
-				ls.on('exit', function (code) {				
-					if (code !== 0)
-						vscode.window.showErrorMessage('Excel Files could not be generated');
-					else
-						vscode.window.showInformationMessage(`XLS files located in ${outPath}`);
-				});
-			}
-		}
-	}
-}
-
-function runXls2yml(uri:vscode.Uri): void {
-	if(vscode.workspace.workspaceFolders !== undefined) {
-		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		let metadataPath = path.join(wf, config.metadataDir);
-		let currentlyOpenTabfilePath = uri ? uri.fsPath : vscode.window.activeTextEditor!.document.fileName;
-		let outPath = path.join(wf, "out");
-		if (!fs.existsSync(outPath))
-			fs.mkdirSync(outPath);
-		if (fs.existsSync(metadataPath)) {
-			logClear();
-			globals.log.append("Generating Domain Files ...");
-			let cmd = starlakeCmd();
-			if (cmd) {
-				let ls = spawn(cmd, ["xls2yml", "--files", currentlyOpenTabfilePath, "--encryption", "false"], "INFO");
-				ls.stdout.on('data', function (data) {
-					globals.log.append(data.toString())
-				});
-				ls.stderr.on('data', function (data) {
-					globals.log.append(data.toString())
-				});
-				ls.on('exit', function (code) {				
-					if (code !== 0)
-						vscode.window.showErrorMessage('YML  Files could not be generated');
-					else
-						vscode.window.showInformationMessage(`YML files located in ${path.join(config.metadataDir, "domains")}`);
-				});
-			}
-		}
-	}
-}
-
-function getCurrentProjectId(): string | undefined {
-	const memento = extensionContext.workspaceState.get('bqProjectId');
-    if (typeof memento === 'undefined') {
-        client.getProjectId().then( 
-			data => { // resolve() 
-				setCurrentProjectId(data)				
-			}, 
-			error => { // reject() 
-				console.log(error); 
-			}
-		);
-        
-    }
-    return extensionContext.workspaceState.get('bqProjectId');
-}
-
-function setCurrentProjectId(projectId: string): void {
-    extensionContext.workspaceState.update('bqProjectId', projectId);
-    client.projectId = projectId;
-    updateProjectIdItem();
-    //dryRunAll();
-}
-
-
-function logClear() {
-	globals.log.clear()
-	globals.log.show()
-}
-
-function runQuery(uri:vscode.Uri): void {
-	if(vscode.workspace.workspaceFolders !== undefined) {
-		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		let metadataPath = path.join(wf, config.metadataDir)
-		if (fs.existsSync(metadataPath)) {
-			logClear()
-			let myUri = uri || vscode.window.activeTextEditor!.document.uri
-			if (myUri.fsPath.endsWith(".comet.yml") && myUri.fsPath.indexOf("jobs") > 0) {
-				executeJobQuery(uri, false)
-			}
-			let selection = vscode.window.activeTextEditor!.selection;
-			let query = ""
-			if (selection.isEmpty) 
-				query = fs.readFileSync(myUri.fsPath, 'utf8');
-			else 
-				query = vscode.window.activeTextEditor!.document.getText(selection).trim();
-				if(myUri.fsPath.endsWith(".sql") && myUri.fsPath.indexOf("jobs") > 0) {
-					if (query.indexOf("${") >= 0 || query.indexOf("{{") >= 0)
-					executeJobQuery(myUri, false)
-					else
-						executeQuery(query, false)
-				}
-		}
-	}
-}
-
-function runDry (uri:vscode.Uri): void {
-	if(vscode.workspace.workspaceFolders !== undefined) {
-		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, config.metadataDir)
-		if (fs.existsSync(metadataPath)) {
-			let selection = vscode.window.activeTextEditor!.selection;
-			let query = ""
-			let myUri = uri || vscode.window.activeTextEditor!.document.uri
-			if (selection.isEmpty) 
-				query = query = fs.readFileSync(myUri.fsPath, 'utf8');
-			else 
-				query = vscode.window.activeTextEditor!.document.getText(selection).trim();
-			executeQuery(query, true)
-		}
-	}
-}
-
-function executeQuery(queryText: string, isDryRun?: boolean) {
-	client = new BigQuery({
-	  projectId:  getCurrentProjectId()
-	});
-  
-	let id: string | undefined;
-	let job = client
-	  .createQueryJob({
-		query: queryText,
-		useLegacySql: false,
-		dryRun: isDryRun
-	  })
-	  .then(data => {
-		let job = data[0];
-		id = job.id;
-		const jobIdMessage = `BigQuery job ID: ${job.id}`;
-		let totalBytesProcessed = +job.metadata.statistics.totalBytesProcessed;
-		let totalBytesStr = ""
-		if (totalBytesProcessed < 1000)
-			totalBytesStr = `${totalBytesProcessed}B`
-		else if (totalBytesProcessed < 1000000)
-			totalBytesStr = `${totalBytesProcessed / 1000} KB`
-		else if (totalBytesProcessed < 1000000000)
-			totalBytesStr = `${totalBytesProcessed / 1000000} MB`
-		else
-			totalBytesStr = `${totalBytesProcessed / 1000000000} GB`
-		//dryRunItem.text = totalBytesStr
-		vscode.window.showInformationMessage(`Dry run: ${totalBytesStr}`);
-		if (!isDryRun)
-			return job.getQueryResults({
-						autoPaginate: true
-					});
-	  })
-	  .catch(err => {
-		extensionContext.workspaceState.update('bqProjectId', undefined);
-		if (!isDryRun)
-			vscode.window.showErrorMessage(`Failed to query BigQuery: ${err}`);
-		return null;
-	  });
-  
-	if (!isDryRun)
-		return job
-		.then(data => {
-			if (data) {
-			writeResults(id!, data[0]);
-			}
-		})
-		.catch(err => {
-			vscode.window.showErrorMessage(`Failed to get results: ${err}`);
-		});
-  }
-  
-
-function writeResults(jobId: string, rows: Array<any>): void {
-	logClear()
-	globals.log.appendLine(`Results for job ${jobId}:`);
-
-	let format = selectedFormat;
-
-	switch (format) {
-		case "csv":
-			stringify(rows, (err, res) => {
-			globals.log.appendLine(res);
-		});
-
-		break;
-		case "table":
-		let t = new easyTable();
-
-		// Collect the header names; flatten nested objects into a
-		// recordname.recordfield format
-		let headers:string[] = [];
-		Object.keys(flatten(rows[0])).forEach(name => headers.push(name));
-
-		rows.forEach((val, idx) => {
-			// Flatten each row, and for each header (name), insert the matching
-			// object property (v[name])
-			let v = flatten(val, { safe: true });
-			headers.forEach((name, col) => {
-			t.cell(name, v[name]);
-			});
-			t.newRow();
-		});
-
-		globals.log.appendLine(t.toString());
-
-		break;
-		default:
-		rows.forEach(row => {
-			globals.log.appendLine(
-			JSON.stringify(flatten(row, { safe: true }), null, "")
-			);
-		});
-	}
-}
-
 function isStarlakeWorkspace() {
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, config.metadataDir)
+		let metadataPath = path.join(wf, globals.config.metadataDir)
 		return fs.existsSync(metadataPath)
 	} 
 	else {
@@ -677,7 +116,7 @@ function isStarlakeWorkspace() {
 function listEnvs() {
 	if(vscode.workspace.workspaceFolders !== undefined) {
 		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath ;
-		let metadataPath = path.join(wf, config.metadataDir)
+		let metadataPath = path.join(wf, globals.config.metadataDir)
 		let envFiles = fs.readdirSync(metadataPath).filter(fn => fn !== 'env.comet.yml' && fn.endsWith('.comet.yml') && fn.startsWith('env.'));
 		let result = envFiles.map(fn => fn.substring(4, fn.length - ".comet.yml".length))
 		result.push('None')
@@ -693,13 +132,13 @@ function setProjectCommand(): void {
     let options: vscode.InputBoxOptions = {
         ignoreFocusOut: false,
     }
-    resourceClient.getProjects()
+    globals.resourceClient.getProjects()
         .then(p => p[0])
         .then(ps => ps.map(p => p.id))
         .then(ps => vscode.window.showQuickPick(<string[]>ps))
         .then(p => {
             if (typeof (p) !== 'undefined') {
-                setCurrentProjectId(p);
+                globals.setCurrentProjectId(p);
             }
         })
         .catch(error => vscode.window.showErrorMessage(error.message));
@@ -708,14 +147,14 @@ function setProjectCommand(): void {
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-    extensionContext = context;
-	config = loadConfig("starlake");
+    globals.extensionContext = context;
+	globals.config = loadConfig("starlake");
 	if (isStarlakeWorkspace()) {
 		dryRunSubscribe(context);
-		switchEnvItem = createSwitchEnvItem(context)
-		selectedFormatItem = createSelectedFormatItem(context)
-		projectItem = createProjectItem(context);
-		updateStatusBarItems();
+		createSwitchEnvItem(context)
+		createSelectedFormatItem(context)
+		createProjectItem(context);
+		globals.updateStatusBarItems();
 		commands.forEach((action, name) => {
 			context.subscriptions.push(vscode.commands.registerCommand(name, action));
 		});
@@ -724,7 +163,7 @@ export function activate(context: vscode.ExtensionContext) {
 			  if (!event.affectsConfiguration("starlake")) {
 				return;
 			  }
-			  config = loadConfig("starlake");
+			  globals.config = loadConfig("starlake");
 			}),
 			vscode.commands.registerCommand(
 				'starlake.dryRun',
@@ -763,7 +202,7 @@ function getEngine(jobPath: string): any {
 			let engine = (jobObject.transform.engine as string).trim()
 			if (engine.indexOf("}") > 0) {
 				let engineVar = engine.replace("${", "").replace("{{", "").replace("}", "")
-				let engineValue = loadEnv(config.metadataDir, globals.currentEnv).get(engineVar)
+				let engineValue = loadEnv(globals.config.metadataDir, globals.currentEnv).get(engineVar)
 				if (engineValue == 'undefined') 
 					return 'None'
 				else
