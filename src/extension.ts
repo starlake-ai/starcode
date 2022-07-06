@@ -15,6 +15,8 @@ import easyTable = require("easy-table");
 import { Resource } from '@google-cloud/resource';
 import {parse as parseYaml} from 'yaml';
 import { ChildProcessWithoutNullStreams } from 'child_process';
+import { loadEnv } from './env'
+import { globals } from './globals'
 
 type CommandMap = Map<string, (uri:vscode.Uri) => void>;
 let commands: CommandMap = new Map<string, (uri:vscode.Uri) => void>([
@@ -28,9 +30,6 @@ let commands: CommandMap = new Map<string, (uri:vscode.Uri) => void>([
   ["starlake.xls2yml", runXls2yml]
 ]);
 
-
-let log = vscode.window.createOutputChannel("starlake log");
-let currentEnv = "None"
 let switchEnvItem: vscode.StatusBarItem
 let selectedFormat = "table"
 let selectedFormatItem: vscode.StatusBarItem
@@ -52,15 +51,15 @@ function createSwitchEnvItem(context: vscode.ExtensionContext): vscode.StatusBar
     context.subscriptions.push(vscode.commands.registerCommand('starlake.switchEnv', async () => 
     {
 		let envs = listEnvs()
-        currentEnv = await vscode.window.showQuickPick(
+        globals.currentEnv = await vscode.window.showQuickPick(
             envs,
             { placeHolder: 'Select Env' }) || 'None';
-		switchEnvItem.text = `Env(${currentEnv})`
-		extensionContext.workspaceState.update('cometEnv', currentEnv);
+		switchEnvItem.text = `Env(${globals.currentEnv})`
+		extensionContext.workspaceState.update('cometEnv', globals.currentEnv);
     }));
 	
-	currentEnv = extensionContext.workspaceState.get('cometEnv') || 'None'
-    switchEnvItem.text = `Starlake Env(${currentEnv})`;
+	globals.currentEnv = extensionContext.workspaceState.get('cometEnv') || 'None'
+    switchEnvItem.text = `Starlake Env(${globals.currentEnv})`;
     switchEnvItem.tooltip = `Starlake Env`;
     switchEnvItem.show();
 	return switchEnvItem
@@ -134,7 +133,7 @@ function buildEnv(logLevel?: string) {
 		env: {
 			COMET_ROOT: vscode.workspace.workspaceFolders![0].uri.fsPath,
 			COMET_METADATA: path.join(vscode.workspace.workspaceFolders![0].uri.fsPath, config.metadataDir),
-			COMET_ENV: currentEnv,
+			COMET_ENV: globals.currentEnv,
 			SPARK_DIR: config.sparkDir,
 			SPARK_HOME: config.sparkDir,
 			COMET_BIN: config.starlakeBin,
@@ -164,13 +163,13 @@ function runValidate(uri:vscode.Uri): void {
 				let ls = spawn(cmd, ["validate"]);
 				ls.stdout.on('data', function (data) {
 					let dataStr = data.toString()
-					log.append(dataStr)
+					globals.log.append(dataStr)
 					validateOutput += dataStr
 					fs.appendFileSync(runLog, dataStr)
 					});
 				ls.stderr.on('data', function (data) {
 					let dataStr = data.toString()
-					log.append(dataStr)
+					globals.log.append(dataStr)
 					validateOutput += dataStr
 					fs.appendFileSync(runLog, dataStr)
 				});
@@ -180,10 +179,10 @@ function runValidate(uri:vscode.Uri): void {
 					let errorFound = startIndex >= 0 && validateOutput.indexOf("0 errors found") != startIndex + "START VALIDATION RESULTS: ".length
 					if (startIndex >= 0 && endIndex > startIndex) {
 						let validationData = validateOutput.substring(startIndex+"START VALIDATION RESULTS: ".length, endIndex)
-						log.append(validationData)
+						globals.log.append(validationData)
 					}
 					else {
-						log.append(validateOutput);
+						globals.log.append(validateOutput);
 					}
 					if (errorFound || code !== 0)
 						vscode.window.showErrorMessage('Validation failed. See errors in log');
@@ -224,10 +223,10 @@ function runLoad(uri:vscode.Uri): void {
 			if (cmd) {
 				let ls = spawn(cmd, ["load"]);
 				ls.stdout.on('data', function (data) {
-					log.append(data.toString());
+					globals.log.append(data.toString());
 				});
 				ls.stderr.on('data', function (data) {
-					log.append(data.toString());
+					globals.log.append(data.toString());
 				});
 				ls.on('exit', function (code) {
 					if (code !== 0)
@@ -268,10 +267,10 @@ function runJob (uri:vscode.Uri): void {
 			if (cmd) {
 				let ls = spawn(cmd, ["transform", "--name", jobname]);
 				ls.stdout.on('data', function (data) {
-					log.append(data.toString());
+					globals.log.append(data.toString());
 				});
 				ls.stderr.on('data', function (data) {
-					log.append(data.toString());
+					globals.log.append(data.toString());
 				});
 				ls.on('exit', function (code) {
 					if (code !== 0)
@@ -331,7 +330,7 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 				return
 			}
 			logClear()
-			log.append("Computing Job request ...")
+			globals.log.append("Computing Job request ...")
 			let cmd = starlakeCmd()
 			if (cmd) {
 				try {
@@ -351,13 +350,13 @@ function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 					if (startIndex >= 0 && endIndex > startIndex) {
 						let queryData = compileQueryData.substring(startIndex+'START COMPILE SQL'.length, endIndex)
 						logClear()
-						log.append("Computed Job request:\n")
-						log.append(format(queryData))
+						globals.log.append("Computed Job request:\n")
+						globals.log.append(format(queryData))
 						executeQuery(queryData, !!isDryRun)
 
 					}
 					else {
-						log.append(compileQueryData);
+						globals.log.append(compileQueryData);
 					}
 					compileQueryData = ""
 					if (code !== 0)
@@ -380,16 +379,16 @@ function runYml2gv(uri:vscode.Uri): void {
 			fs.mkdirSync(outPath);
 		if (fs.existsSync(metadataPath)) {
 			logClear()
-			log.append("Generating Data Graph ...")
+			globals.log.append("Generating Data Graph ...")
 			let cmd = starlakeCmd()
 			let dataGraphPath = path.join(outPath, "datagraph.dot")
 			if (cmd) {
 				let ls = spawn(cmd, ["yml2gv", "--output", dataGraphPath], "INFO");
 				ls.stdout.on('data', function (data) {
-					  log.append(data.toString())
+					  globals.log.append(data.toString())
 				});
 				ls.stderr.on('data', function (data) {
-					log.append(data.toString())
+					globals.log.append(data.toString())
 				});
 				ls.on('exit', function (code) {				
 					if (code !== 0)
@@ -418,11 +417,11 @@ function spawn(cmd: string, args: Array<string>, logLevel?: string): ChildProces
 		...env
 	}
 
-	log.append("\n--------\n")
-	log.append(JSON.stringify(env,null,2))
-	log.append("\n\n")
-	log.append(cmdLine.join(' '))
-	log.append("\n--------\n")
+	globals.log.append("\n--------\n")
+	globals.log.append(JSON.stringify(env,null,2))
+	globals.log.append("\n\n")
+	globals.log.append(cmdLine.join(' '))
+	globals.log.append("\n--------\n")
 
 	if (process.platform == 'win32') {
 		return child_process.spawn(cmd, args, completeEnv);
@@ -444,15 +443,15 @@ function runYml2xls(uri:vscode.Uri): void {
 			fs.mkdirSync(outPath);
 		if (fs.existsSync(metadataPath)) {
 			logClear();
-			log.append("Generating Excel Files ...");
+			globals.log.append("Generating Excel Files ...");
 			let cmd = starlakeCmd();
 			if (cmd) {
 				let ls = spawn(cmd, ["yml2xls", "--xls", outPath], "INFO");
 				ls.stdout.on('data', function (data) {
-					log.append(data.toString())
+					globals.log.append(data.toString())
 				});
 				ls.stderr.on('data', function (data) {
-					log.append(data.toString())
+					globals.log.append(data.toString())
 				});
 				ls.on('exit', function (code) {				
 					if (code !== 0)
@@ -475,15 +474,15 @@ function runXls2yml(uri:vscode.Uri): void {
 			fs.mkdirSync(outPath);
 		if (fs.existsSync(metadataPath)) {
 			logClear();
-			log.append("Generating Domain Files ...");
+			globals.log.append("Generating Domain Files ...");
 			let cmd = starlakeCmd();
 			if (cmd) {
 				let ls = spawn(cmd, ["xls2yml", "--files", currentlyOpenTabfilePath, "--encryption", "false"], "INFO");
 				ls.stdout.on('data', function (data) {
-					log.append(data.toString())
+					globals.log.append(data.toString())
 				});
 				ls.stderr.on('data', function (data) {
-					log.append(data.toString())
+					globals.log.append(data.toString())
 				});
 				ls.on('exit', function (code) {				
 					if (code !== 0)
@@ -521,8 +520,8 @@ function setCurrentProjectId(projectId: string): void {
 
 
 function logClear() {
-	log.clear()
-	log.show()
+	globals.log.clear()
+	globals.log.show()
 }
 
 function runQuery(uri:vscode.Uri): void {
@@ -623,14 +622,14 @@ function executeQuery(queryText: string, isDryRun?: boolean) {
 
 function writeResults(jobId: string, rows: Array<any>): void {
 	logClear()
-	log.appendLine(`Results for job ${jobId}:`);
+	globals.log.appendLine(`Results for job ${jobId}:`);
 
 	let format = selectedFormat;
 
 	switch (format) {
 		case "csv":
 			stringify(rows, (err, res) => {
-			log.appendLine(res);
+			globals.log.appendLine(res);
 		});
 
 		break;
@@ -652,12 +651,12 @@ function writeResults(jobId: string, rows: Array<any>): void {
 			t.newRow();
 		});
 
-		log.appendLine(t.toString());
+		globals.log.appendLine(t.toString());
 
 		break;
 		default:
 		rows.forEach(row => {
-			log.appendLine(
+			globals.log.appendLine(
 			JSON.stringify(flatten(row, { safe: true }), null, "")
 			);
 		});
@@ -764,12 +763,11 @@ function getEngine(jobPath: string): any {
 			let engine = (jobObject.transform.engine as string).trim()
 			if (engine.indexOf("}") > 0) {
 				let engineVar = engine.replace("${", "").replace("{{", "").replace("}", "")
-				let engineValue = loadEnv().get(engineVar)
+				let engineValue = loadEnv(config.metadataDir, globals.currentEnv).get(engineVar)
 				if (engineValue == 'undefined') 
 					return 'None'
 				else
 					return engineValue
-
 			}
 		}
 		else {
@@ -784,32 +782,5 @@ function getEngine(jobPath: string): any {
 
 
 
-
-function loadEnv(): Map<string, string> {
-    const rootFolder = vscode.workspace.workspaceFolders![0].uri.fsPath
-	let metadataPath = path.join(rootFolder, config.metadataDir)
-	let envPath = path.join(metadataPath, "env.comet.yml")
-	let result = new Map<string, string>()
-	if (fs.existsSync(envPath)) {
-		const content = fs.readFileSync(envPath, 'utf8')
-		let envObject = parseYaml(content)
-		Object.entries(envObject.env).forEach(
-			([key, value]) => result.set(key, value as string)
-		);
-	}
-	
-	if (currentEnv != 'None') {
-		let currentEnvPath = path.join(metadataPath, `env.${currentEnv}.comet.yml`)
-		if (fs.existsSync(currentEnvPath)) {
-			const content = fs.readFileSync(currentEnvPath, 'utf8')
-			let currentEnvObject = parseYaml(content)
-			Object.entries(currentEnvObject.env).forEach(
-				([key, value]) => result.set(key, value as string)
-			);
-		}
-	}
-
-	return result
-}
 
 
