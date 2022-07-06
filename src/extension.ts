@@ -24,7 +24,8 @@ let commands: CommandMap = new Map<string, (uri:vscode.Uri) => void>([
   ["starlake.runjob", runJob],
   ["starlake.runQuery", runQuery],
   ["starlake.yml2gv", runYml2gv],
-  ["starlake.yml2xls", runYml2xls]
+  ["starlake.yml2xls", runYml2xls],
+  ["starlake.xls2yml", runXls2yml]
 ]);
 
 
@@ -202,10 +203,10 @@ function starlakeCmd(): string | undefined {
 		vscode.window.showErrorMessage("Set 'Starlake Bin' to the path of your starlake assembly")
 	}
 	else if (process.platform == 'win32') {
-		res = path.join(path.dirname(config.starlakeBin), "starlake.cmd")
+		res = path.join(extensionContext.extensionPath, "vscode-extension", "starlake.cmd")
 	}
 	else {
-		res = path.join(path.dirname(config.starlakeBin), "starlake.sh")
+		res = path.join(extensionContext.extensionPath, "vscode-extension", "starlake.sh")
 	}
 	if (!fs.existsSync(res))
 		vscode.window.showErrorMessage(`Path ${res} not found`);
@@ -458,6 +459,37 @@ function runYml2xls(uri:vscode.Uri): void {
 						vscode.window.showErrorMessage('Excel Files could not be generated');
 					else
 						vscode.window.showInformationMessage(`XLS files located in ${outPath}`);
+				});
+			}
+		}
+	}
+}
+
+function runXls2yml(uri:vscode.Uri): void {
+	if(vscode.workspace.workspaceFolders !== undefined) {
+		let wf = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		let metadataPath = path.join(wf, config.metadataDir);
+		let currentlyOpenTabfilePath = uri ? uri.fsPath : vscode.window.activeTextEditor!.document.fileName;
+		let outPath = path.join(wf, "out");
+		if (!fs.existsSync(outPath))
+			fs.mkdirSync(outPath);
+		if (fs.existsSync(metadataPath)) {
+			logClear();
+			log.append("Generating Domain Files ...");
+			let cmd = starlakeCmd();
+			if (cmd) {
+				let ls = spawn(cmd, ["xls2yml", "--files", currentlyOpenTabfilePath, "--encryption", "false"], "INFO");
+				ls.stdout.on('data', function (data) {
+					log.append(data.toString())
+				});
+				ls.stderr.on('data', function (data) {
+					log.append(data.toString())
+				});
+				ls.on('exit', function (code) {				
+					if (code !== 0)
+						vscode.window.showErrorMessage('YML  Files could not be generated');
+					else
+						vscode.window.showInformationMessage(`YML files located in ${path.join(config.metadataDir, "domains")}`);
 				});
 			}
 		}

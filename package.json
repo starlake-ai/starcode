@@ -3,7 +3,7 @@
   "displayName": "Starlake",
   "description": "Starlake Dev Env",
   "publisher": "Starlake",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "homepage": "https://www.starlake.ai",
   "license": "MIT",
   "engines": {
@@ -128,6 +128,10 @@
       {
         "command": "starlake.yml2xls",
         "title": "Starlake: Generate Excel Files"
+      },
+      {
+        "command": "starlake.xls2yml",
+        "title": "Starlake: Generate YML Files from XLS"
       }
 
     ],
@@ -156,6 +160,11 @@
         {
           "when": "resourcePath =~ /metadata/",
           "command": "starlake.yml2xls",
+          "group": "Starlake@1"
+        },
+        {
+          "when": "resourceExtname == .xls || resourceExtname == .xlsx",
+          "command": "starlake.xls2yml",
           "group": "Starlake@1"
         }
 
