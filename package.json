@@ -148,23 +148,38 @@
           "group": "Starlake@1"
         },
         {
-          "when": "resourcePath =~ /metadata/",
+          "when": "resourcePath =~ /domains/.* || resourcePath =~ /metadata/.* || resourcePath =~ /jobs/.*",
           "command": "starlake.validate",
           "group": "Starlake@1"
         },
         {
-          "when": "resourcePath =~ /metadata/",
+          "when": "resourcePath =~ /domains/.*",
           "command": "starlake.yml2gv",
           "group": "Starlake@1"
         },
         {
-          "when": "resourcePath =~ /metadata/",
+          "when": "resourcePath =~ /domains/.*",
           "command": "starlake.yml2xls",
           "group": "Starlake@1"
         },
         {
           "when": "resourceExtname == .xls || resourceExtname == .xlsx",
           "command": "starlake.xls2yml",
+          "group": "Starlake@1"
+        },
+        {
+          "when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
+          "command": "starlake.runjob",
+          "group": "Starlake@1"
+        },
+        {
+          "when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
+          "command": "starlake.runQuery",
+          "group": "Starlake@1"
+        },
+        {
+          "when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
+          "command": "starlake.previewJobQuery",
           "group": "Starlake@1"
         }
 
