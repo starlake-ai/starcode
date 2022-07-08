@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import {parse as parseYaml} from 'yaml';
+import { globals } from './globals'
 
 export function loadEnv(metadataDir: string, currentEnv: string): Map<string, string> {
     const rootFolder = vscode.workspace.workspaceFolders![0].uri.fsPath

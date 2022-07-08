@@ -16,7 +16,7 @@ export function runXls2yml(uri:vscode.Uri): void {
 			globals.log.append("Generating Domain Files ...");
 			let cmd = globals.starlakeCmd();
 			if (cmd) {
-				let ls = globals.spawn(cmd, ["xls2yml", "--files", currentlyOpenTabfilePath, "--encryption", "false"], "INFO");
+				let ls = globals.spawn(cmd, ["xls2yml", "--files", currentlyOpenTabfilePath, "--encryption", "false"], "INFO", "false");
 				ls.stdout.on('data', function (data) {
 					globals.log.append(data.toString())
 				});

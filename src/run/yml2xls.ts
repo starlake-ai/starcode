@@ -15,7 +15,7 @@ export function runYml2xls(uri:vscode.Uri): void {
 			globals.log.append("Generating Excel Files ...");
 			let cmd = globals.starlakeCmd();
 			if (cmd) {
-				let ls = globals.spawn(cmd, ["yml2xls", "--xls", outPath], "INFO");
+				let ls = globals.spawn(cmd, ["yml2xls", "--xls", outPath], "INFO", "false");
 				ls.stdout.on('data', function (data) {
 					globals.log.append(data.toString())
 				});

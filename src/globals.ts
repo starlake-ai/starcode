@@ -21,7 +21,7 @@ export class Globals {
     client = new BigQuery()
     extensionContext!: vscode.ExtensionContext;
 
-    private buildEnv(logLevel?: string) {
+    private buildEnv(logLevel?: string, subst?: string) {
         let result = {
             env: {
                 COMET_ROOT: vscode.workspace.workspaceFolders![0].uri.fsPath,
@@ -32,7 +32,8 @@ export class Globals {
                 COMET_BIN: globals.config.starlakeBin,
                 COMET_LOGLEVEL: logLevel || globals.config.logLevel || 'INFO',
                 GCLOUD_PROJECT: this.getCurrentProjectId() || "",
-                TEMPORARY_GCS_BUCKET: globals.config.googleCloudStorageTemporaryBucket || ""
+                TEMPORARY_GCS_BUCKET: globals.config.googleCloudStorageTemporaryBucket || "",
+                COMET_INTERNAL_SUBSTITUTE_VARS: subst || "true"
             }
         }
         return result
@@ -69,10 +70,10 @@ export class Globals {
     }
     
     
-    spawn(cmd: string, args: Array<string>, logLevel?: string): ChildProcessWithoutNullStreams {
+    spawn(cmd: string, args: Array<string>, logLevel?: string, subst?: string): ChildProcessWithoutNullStreams {
         var cmdLine = args.slice();
         cmdLine.unshift(cmd);
-        let env = this.buildEnv(logLevel)
+        let env = this.buildEnv(logLevel, subst)
         let completeEnv = {
             ...process.env, 
             ...env
