@@ -189,35 +189,6 @@ export function activate(context: vscode.ExtensionContext) {
 export function deactivate() {}
 
 
-/////////////////////////////////////////
-/////////////////////////////////////////
-/////////////////////////////////////////
-/////////////////////////////////////////
-
-function getEngine(jobPath: string): any {
-	if (fs.existsSync(jobPath)) {
-		const content = fs.readFileSync(jobPath, 'utf8')
-		let jobObject = parseYaml(content)
-		if (jobObject.transform) {
-			let engine = (jobObject.transform.engine as string).trim()
-			if (engine.indexOf("}") > 0) {
-				let engineVar = engine.replace("${", "").replace("{{", "").replace("}", "")
-				let engineValue = loadEnv(globals.config.metadataDir, globals.currentEnv).get(engineVar)
-				if (engineValue == 'undefined') 
-					return 'None'
-				else
-					return engineValue
-			}
-		}
-		else {
-			vscode.window.showErrorMessage(`transform tag not found in job file ${jobPath}`);
-		}
-	}
-	else {
-		vscode.window.showErrorMessage(`Job file ${jobPath} not found`);
-		return "None"
-	}
-}
 
 
 

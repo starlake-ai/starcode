@@ -21,8 +21,8 @@ export function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 			if (currentlyOpenTabfilePath.indexOf("jobs") >=0) {
 				if (currentlyOpenTabfileName.endsWith(".comet.yml")) {
 					jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".comet.yml".length)
-
-				} else if (currentlyOpenTabfileName.endsWith(".sql")) {
+				} 
+				else if (currentlyOpenTabfileName.endsWith(".sql")) {
 					let cometYaml = currentlyOpenTabfilePath.substring(0, currentlyOpenTabfilePath.length -"sql".length) + "comet.yml"
 					if (fs.existsSync(cometYaml)) {
 						jobname = currentlyOpenTabfileName.substring(0, currentlyOpenTabfileName.length - ".sql".length)

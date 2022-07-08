@@ -22,7 +22,7 @@ export function runQuery(uri:vscode.Uri): void {
 				query = vscode.window.activeTextEditor!.document.getText(selection).trim();
 				if(myUri.fsPath.endsWith(".sql") && myUri.fsPath.indexOf("jobs") > 0) {
 					if (query.indexOf("${") >= 0 || query.indexOf("{{") >= 0)
-					executeJobQuery(myUri, false)
+						executeJobQuery(myUri, false)
 					else
 						executeQuery(query, false)
 				}
