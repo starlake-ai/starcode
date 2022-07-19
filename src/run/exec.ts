@@ -8,6 +8,33 @@ import { BigQuery } from '@google-cloud/bigquery';
 import { stringify } from 'csv-stringify';
 import easyTable = require("easy-table");
 
+
+function executeSQLQuery(uri:vscode.Uri, isDryRun?: boolean): void {
+	let selection = vscode.window.activeTextEditor!.selection;
+	let query = ""
+	let myUri = uri || vscode.window.activeTextEditor!.document.uri
+	if (selection.isEmpty) 
+		query = query = fs.readFileSync(myUri.fsPath, 'utf8');
+	else 
+		query = vscode.window.activeTextEditor!.document.getText(selection).trim();
+	executeQuery(query, !!isDryRun)
+
+}
+
+function bytesFormat(totalBytesProcessed: number): string {
+	let totalBytesStr = ""
+	if (totalBytesProcessed < 1000)
+		totalBytesStr = `${totalBytesProcessed}B`
+	else if (totalBytesProcessed < 1000000)
+		totalBytesStr = `${totalBytesProcessed / 1000} KB`
+	else if (totalBytesProcessed < 1000000000)
+		totalBytesStr = `${totalBytesProcessed / 1000000} MB`
+	else
+		totalBytesStr = `${totalBytesProcessed / 1000000000} GB`
+	return totalBytesStr
+
+}
+
 export function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 	let compileQueryData = ""
 	if(vscode.workspace.workspaceFolders !== undefined) {
@@ -32,14 +59,7 @@ export function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 						}
 					}
  					else {
-						let selection = vscode.window.activeTextEditor!.selection;
-						let query = ""
-						let myUri = uri || vscode.window.activeTextEditor!.document.uri
-						if (selection.isEmpty) 
-							query = query = fs.readFileSync(myUri.fsPath, 'utf8');
-						else 
-							query = vscode.window.activeTextEditor!.document.getText(selection).trim();
-						executeQuery(query, !!isDryRun)
+						executeSQLQuery(uri, isDryRun)
 						return
 					}
 				}
@@ -48,6 +68,7 @@ export function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 				}
 			}
 			else {
+				executeSQLQuery(uri, isDryRun)
 				return
 			}
 			globals.logClear()
@@ -55,7 +76,7 @@ export function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 			let cmd = globals.starlakeCmd()
 			if (cmd) {
 				try {
-				let ls = globals.spawn(cmd, ["transform", "--name", jobname, "--compile"], "INFO");
+				let ls = globals.spawn(cmd, ["transform", "--name", jobname, "--interactive", globals.selectedFormat], "INFO");
 				ls.on('error',function (err) {
 					console.log('Failed to start child process.');
 				});
@@ -66,22 +87,35 @@ export function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 					compileQueryData += data.toString() 	
 				});
 				ls.on('exit', function (code) {				
-					let startIndex = compileQueryData.indexOf("START COMPILE SQL")
-					let endIndex = compileQueryData.indexOf("END COMPILE SQL")
-					if (startIndex >= 0 && endIndex > startIndex) {
-						let queryData = compileQueryData.substring(startIndex+'START COMPILE SQL'.length, endIndex)
-						globals.logClear()
+					let startCompileIndex = compileQueryData.indexOf("START COMPILE SQL")
+					let endCompileIndex = compileQueryData.indexOf("END COMPILE SQL")
+					let startInteractiveIndex = compileQueryData.indexOf("START INTERACTIVE SQL")
+					let endInteractiveIndex = compileQueryData.indexOf("END INTERACTIVE SQL")
+					let startTotalBytesProcessedIndex = compileQueryData.indexOf("Total Bytes Processed:")
+					let endTotalBytesProcessedIndex = compileQueryData.indexOf("bytes.")
+					if (startTotalBytesProcessedIndex >= 0 && startTotalBytesProcessedIndex < endTotalBytesProcessedIndex) {
+						let totalBytes = parseInt(compileQueryData.substring(startTotalBytesProcessedIndex+'Total Bytes Processed:'.length, endTotalBytesProcessedIndex).trim())
+						let totalBytesStr = bytesFormat(totalBytes)
+						vscode.window.showInformationMessage(`Dry run: ${totalBytesStr}`);
+					}
+					let compileFound = false
+					if (startCompileIndex >= 0 && endCompileIndex > startCompileIndex) {
+						compileFound = true
+						let queryData = compileQueryData.substring(startCompileIndex+'START COMPILE SQL'.length, endCompileIndex)
 						globals.log.append("Computed Job request:\n")
 						globals.log.append(format(queryData))
-						executeQuery(queryData, !!isDryRun)
-
+						//executeQuery(queryData, !!isDryRun)
 					}
-					else {
+					if (startInteractiveIndex >= 0 && endInteractiveIndex > startInteractiveIndex) {
+						let results = compileQueryData.substring(startInteractiveIndex+'START INTERACTIVE SQL'.length, endInteractiveIndex)
+						globals.log.append("Results:\n")
+						globals.log.append(results)
+					}
+					if (code !== 0) {
+						vscode.window.showErrorMessage('Transform failed');
 						globals.log.append(compileQueryData);
 					}
 					compileQueryData = ""
-					if (code !== 0)
-						vscode.window.showErrorMessage('Transform failed');
 				});
 			} catch(e: any){
 				console.log(e.Message);
@@ -108,15 +142,7 @@ export function executeQuery(queryText: string, isDryRun?: boolean) {
 		id = job.id;
 		const jobIdMessage = `BigQuery job ID: ${job.id}`;
 		let totalBytesProcessed = +job.metadata.statistics.totalBytesProcessed;
-		let totalBytesStr = ""
-		if (totalBytesProcessed < 1000)
-			totalBytesStr = `${totalBytesProcessed}B`
-		else if (totalBytesProcessed < 1000000)
-			totalBytesStr = `${totalBytesProcessed / 1000} KB`
-		else if (totalBytesProcessed < 1000000000)
-			totalBytesStr = `${totalBytesProcessed / 1000000} MB`
-		else
-			totalBytesStr = `${totalBytesProcessed / 1000000000} GB`
+		let totalBytesStr = bytesFormat(totalBytesProcessed)
 		//dryRunItem.text = totalBytesStr
 		vscode.window.showInformationMessage(`Dry run: ${totalBytesStr}`);
 		if (!isDryRun)
