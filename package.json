@@ -3,7 +3,7 @@
   "displayName": "Starlake",
   "description": "Starlake Dev Env",
   "publisher": "Starlake",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "homepage": "https://www.starlake.ai",
   "license": "MIT",
   "engines": {
@@ -187,7 +187,7 @@
       "editor/context": [
         {
           "when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
-          "command": "starlake.runjob",
+          "command": "starlake.previewJobQuery",
           "group": "Starlake@1"
         },
         {
@@ -197,9 +197,10 @@
         },
         {
           "when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
-          "command": "starlake.previewJobQuery",
+          "command": "starlake.runjob",
           "group": "Starlake@1"
         }
+        
       ]
     }
   },

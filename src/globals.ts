@@ -7,9 +7,11 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ChildProcessWithoutNullStreams } from 'child_process';
 import * as child_process from 'child_process';
+import { version } from 'os';
 
 
 export class Globals {
+    MIN_STARLAKE_BIN_VERSION: string = "0.3.21"
     log: OutputChannel = vscode.window.createOutputChannel("starlake log");
     currentEnv: string = "None"
     switchEnvItem: vscode.StatusBarItem = this.createStatusBarItem(1);
@@ -95,8 +97,29 @@ export class Globals {
         
     }
     
+    private checkStarlakeVersion() : void {
+        if (!globals.config.starlakeBin) {
+            vscode.window.showErrorMessage("Set 'Starlake Bin' to the path of your starlake assembly")
+        }
+        else {
+            let endIndex = globals.config.starlakeBin.lastIndexOf("-SNAPSHOT-assembly.jar")
+            if (endIndex < 0)
+                endIndex = globals.config.starlakeBin.lastIndexOf("-assembly.jar")
+            let startIndex = globals.config.starlakeBin.lastIndexOf("starlake-spark")
+            if(startIndex >= 0 && startIndex < endIndex) {
+                startIndex = startIndex + "starlake-spark".length + "3_2.12-".length
+                let version = globals.config.starlakeBin.substring(startIndex, endIndex)
+                if (version < this.MIN_STARLAKE_BIN_VERSION)
+                    vscode.window.showErrorMessage(`Found starlake version ${version}. Version ${this.MIN_STARLAKE_BIN_VERSION} required. Please download newer version from https://repo1.maven.org/maven2/ai/starlake/starlake-spark3_2.12`)
+            } else {
+                vscode.window.showErrorMessage(`Invalid starlake binary ${version}. Please download from https://repo1.maven.org/maven2/ai/starlake/starlake-spark3_2.12`)
+            }
+        }
+
+    }
     starlakeCmd():   string | undefined {
         let res = ""
+        this.checkStarlakeVersion()
         if (!globals.config.starlakeBin) {
             vscode.window.showErrorMessage("Set 'Starlake Bin' to the path of your starlake assembly")
         }

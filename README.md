@@ -11,7 +11,6 @@
 
 * Download and install Spark from https://spark.apache.org. Windows users should make sure that `winutils.exe` is present in the PATH.
 * Download Starlake assembly from https://s01.oss.sonatype.org/content/repositories/releases/ai/starlake/
-* Download starlake.cmd on Windows or starlake.sh on MacOs / Linux from https://github.com/starlake-ai/starlake/tree/master/cli and copy it in the directory where you downloaded the Starlake assembly
 
 Profit.
 
@@ -45,6 +44,11 @@ This extension contributes the following settings:
 * `starlake.metadataDir`: Metadata folder name. "metadata" by default
 
 ## Release Notes
+
+### 0.1.6
+
+- Improve format handling
+- Check for starlake min version
 
 ### 0.0.1
 

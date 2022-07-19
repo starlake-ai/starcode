@@ -104,16 +104,19 @@ export function executeJobQuery(uri:vscode.Uri, isDryRun?: boolean): void {
 						let queryData = compileQueryData.substring(startCompileIndex+'START COMPILE SQL'.length, endCompileIndex)
 						globals.log.append("Computed Job request:\n")
 						globals.log.append(format(queryData))
+						globals.log.append("\n")
 						//executeQuery(queryData, !!isDryRun)
 					}
 					if (startInteractiveIndex >= 0 && endInteractiveIndex > startInteractiveIndex) {
 						let results = compileQueryData.substring(startInteractiveIndex+'START INTERACTIVE SQL'.length, endInteractiveIndex)
 						globals.log.append("Results:\n")
 						globals.log.append(results)
+						globals.log.append("\n")
 					}
 					if (code !== 0) {
 						vscode.window.showErrorMessage('Transform failed');
 						globals.log.append(compileQueryData);
+						globals.log.append("\n")
 					}
 					compileQueryData = ""
 				});
