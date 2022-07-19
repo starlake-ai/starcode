@@ -169,7 +169,7 @@
         },
         {
           "when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
-          "command": "starlake.runjob",
+          "command": "starlake.previewJobQuery",
           "group": "Starlake@1"
         },
         {
@@ -179,7 +179,7 @@
         },
         {
           "when": "resourcePath =~ /jobs.*.comet.yml/ || resourcePath =~ /jobs.*.sql/",
-          "command": "starlake.previewJobQuery",
+          "command": "starlake.runjob",
           "group": "Starlake@1"
         }
 
